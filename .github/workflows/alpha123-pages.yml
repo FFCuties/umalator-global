@@ -52,6 +52,12 @@ jobs:
           BASE_PATH = 'new URL(".",document.baseURI).pathname.replace(/\\/$/,"")'
           POINTER = 'globalThis.UmaFork'
           ROUTES = ('index.html', 'compare/index.html', 'skills/index.html', 'stamina/index.html')
+          SUMMARY_CSS = '''
+          .horseSkillHeader.fork-compare-header{background:none;border:0;box-shadow:none;margin:8px auto}
+          .fork-build-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.4rem;padding:.15rem .4rem;width:100%;box-sizing:border-box}
+          .fork-build-summary>output,.fork-build-summary>.fork-skills-title{background:#a8cf89;border:1px solid #557777;border-radius:999px;color:#183421;padding:.22rem .35rem;text-align:center;font-weight:600;font-size:clamp(.85rem,2.6vw,1.15rem);line-height:1.3}
+          .fork-build-summary>.fork-skills-title{grid-column:1/-1}
+          '''
 
 
           def replace_once(text, anchor, replacement):
@@ -106,6 +112,72 @@ jobs:
                       .replace('../vendor/opencv.js', ASSETS + 'vendor/opencv.js'))
 
 
+          def integrate_rating_bundle(bundle):
+              score = match_once(bundle, r'(\w+)=-1;if\((\w+)\.showScore\)\{let (\w+)=(\w+)\(\2\.state\);\1=(\w+)\(\(\)=>(\w+)\(\3\),\[\3\]\)\}')
+              value, props, _, getter, memo, calculate = score.groups()
+              snapshot = f'{getter}({props}.state)'
+              course = f'{props}.course'
+              live_score = f'{POINTER}.rating(forkBuild,{calculate},{course})'
+              bundle = replace_once(bundle, score[0],
+                  f'{value}=-1,forkBuild={snapshot},forkRating={memo}(()=>{props}.compareSummary?{live_score}:'
+                  f'{props}.showScore?{calculate}(forkBuild):-1,[forkBuild,{props}.compareSummary,{props}.showScore,{course}]);'
+                  f'{value}={props}.showScore?forkRating:-1;')
+              header = match_once(bundle, rf'(\w+)\("div",\{{class:"horseSkillHeader"\}},({props}\.skillHeader\|\|\1\(\w+,\{{id:"skillheader"\}}\)),(\1\("output",\{{class:"fork-sp",title:"[^"]+"\}},{re.escape(POINTER)}\.summary\(\w+\(\)\.skills\.values\(\)\)\))\)')
+              h, title, old_sp = header.groups()
+              sp = f'{POINTER}.summary(forkBuild.skills.values())'
+              summary = (
+                  f'{h}("div",{{class:"fork-build-summary"}},'
+                  f'{h}("output",{{title:"Total base skill points including prerequisites"}},"SP : "+{sp}),'
+                  f'{h}("output",null,"Rating : "+{POINTER}.formatRating(forkRating)),'
+                  f'{h}("div",{{class:"fork-skills-title"}},{title}))'
+              )
+              bundle = replace_once(bundle, header[0],
+                  f'{h}("div",{{class:{props}.compareSummary?"horseSkillHeader fork-compare-header":"horseSkillHeader"}},'
+                  f'{props}.compareSummary?{summary}:[{title},{old_sp[:-1]}+" SP")])')
+              catalog = match_once(bundle, r'Object\.keys\((\w+)\)\.flatMap\((\w+)=>Object\.keys\(\1\[\2\]\.outfits\)\)')[1]
+              export = match_once(bundle, rf'{re.escape(POINTER)}\.exportFile\((\w+)\((\w+)\(\)\)\)')
+              serialize, current = export.groups()
+              bundle = replace_once(bundle, export[0],
+                  f'{{const build={current}();{POINTER}.exportFile({serialize}(build),'
+                  f'{catalog}[build.outfitId.slice(0,4)]?.name[1],'
+                  f'{POINTER}.rating(build,{calculate},{course}));}}')
+              compare = match_once(bundle, r'state:\w+\.uma1,aptitudesMode:"simulation",course:\w+,showPolicyEd:!0,tabstart:\(\)=>4\},\w+\?\w+\(\w+,\{id:(\w+)==0\?"ui\.uma1":"ui\.uma"')[1]
+              for slot in ('uma1', 'uma2'):
+                  editor = match_once(bundle, rf'state:\w+\.{slot},aptitudesMode:"simulation",course:\w+,showPolicyEd:!0,tabstart:')
+                  bundle = replace_once(bundle, editor[0], editor[0].replace('tabstart:', f'compareSummary:{compare}==0,tabstart:'))
+              return bundle
+
+
+          def readable_rating_changes(horse, app):
+              score = match_once(horse, r'let score = -1;\s+if \(props\.showScore\) \{[^}]+\}')
+              horse = replace_once(horse, score[0], f'''const build = useGetter(props.state);
+          	const rating = useMemo(() => props.compareSummary ? {POINTER}.rating(build, scoreUma, props.course)
+          		: props.showScore ? scoreUma(build) : -1, [build, props.compareSummary, props.showScore, props.course]);
+          	const score = props.showScore ? rating : -1;''')
+              export = f'{POINTER}.exportFile(serializeUma(uma_GetCurrent()))'
+              horse = replace_once(horse, export, f'''{{
+                                                      const current = uma_GetCurrent();
+                                                      {POINTER}.exportFile(serializeUma(current),
+                                                          umas[current.outfitId.slice(0, 4)]?.name[1],
+                                                          {POINTER}.rating(current, scoreUma, props.course));
+                                                  }}''')
+              head = match_once(horse, r'<div class="horseSkillHeader">[\s\S]+?</output>\s*</div>')
+              horse = replace_once(horse, head[0], f'''<div class={{props.compareSummary ? "horseSkillHeader fork-compare-header" : "horseSkillHeader"}}>
+          					{{props.compareSummary ? <div class="fork-build-summary">
+          						<output title="Total base skill points including prerequisites">SP : {{{POINTER}.summary(build.skills.values())}}</output>
+          						<output>Rating : {{{POINTER}.formatRating(rating)}}</output>
+          						<div class="fork-skills-title">{{props.skillHeader || <Text id="skillheader" />}}</div>
+          					</div> : <>
+          						{{props.skillHeader || <Text id="skillheader" />}}
+          						<output class="fork-sp" title="Total base skill points including prerequisites">{{{POINTER}.summary(build.skills.values())}} SP</output>
+          					</>}}
+          				</div>''')
+              for slot in ('uma1', 'uma2'):
+                  anchor = f'state={{O.{slot}}} aptitudesMode="simulation" course={{course}}'
+                  app = replace_once(app, anchor, anchor + ' compareSummary={mode == Mode.Compare}')
+              return horse, app
+
+
           def readable_changes(read, destination):
               horse = read('components/HorseDef.tsx').decode()
               menu = '<li><button onClick={clipbdPaste}>Paste from clipboard</button></li>'
@@ -120,6 +192,7 @@ jobs:
               app = read('umalator/app.tsx').decode()
               app = replace_once(app, "'/uma-tools/umalator-global'", BASE_PATH)
               app = replace_once(app, 'initTelemetry();', '// The fork does not initialize upstream analytics.')
+              horse, app = readable_rating_changes(horse, app)
               for name, content in [('components/HorseDef.tsx', horse), ('umalator/app.tsx', app)]:
                   target = destination / name
                   target.parent.mkdir(parents=True, exist_ok=True)
@@ -135,7 +208,7 @@ jobs:
               catalog = {'revision': sha, 'skills': {
                   key: {**meta[key], 'rarity': value['rarity']} for key, value in skills.items()
               }}
-              bundle = integrate_bundle(read(base + 'bundle.js').decode())
+              bundle = integrate_rating_bundle(integrate_bundle(read(base + 'bundle.js').decode()))
               worker = read(base + 'simulator.worker.js')
               if not skills or not all(f'"{id}":'.encode() in worker for id in skills):
                   raise ValueError("Upstream worker and skill data have different skill IDs")
@@ -143,7 +216,7 @@ jobs:
               (dest / 'bundle.js').write_text(bundle, encoding='utf-8')
               (dest / 'simulator.worker.js').write_bytes(worker)
               (dest / 'bundle.css').write_text(localize(read(base + 'bundle.css').decode()) +
-                                              '\n.fork-sp{margin-inline-start:.65em;white-space:nowrap;font-weight:600}\n',
+                                              '\n.fork-sp{margin-inline-start:.65em;white-space:nowrap;font-weight:600}\n' + SUMMARY_CSS,
                                               encoding='utf-8')
               (dest / 'skill-catalog.js').write_text('globalThis.UmaForkData=' + json.dumps(catalog) + ';', encoding='utf-8')
               shutil.copyfile(files / 'overlay/build-io.js', dest / 'build-io.js')
@@ -230,7 +303,29 @@ jobs:
             function summary(ids) {
               const selected = [...ids];
               const partial = selected.some(id => !Object.hasOwn(skills, id));
-              return `${total(selected).toLocaleString('en-US')}${partial ? '+' : ''} SP`;
+              return `${total(selected).toLocaleString('en-US')}${partial ? '+' : ''}`;
+            }
+
+            function rating(build, scoreUma, course) {
+              const aptitudes = [...(build.aptitudes ?? ['S', 'S', 'S', 'S', 'A', 'A', 'A', 'A', 'A', 'A'])];
+              if (course) {
+                const strategies = ['Nige', 'Senkou', 'Sasi', 'Oikomi'];
+                const strategy = strategies.indexOf(build.strategy === 'Oonige' ? 'Nige' : build.strategy);
+                if (strategy >= 0) aptitudes[4 + strategy] = build.strategyAptitude;
+                aptitudes[course.distanceType - 1] = build.distanceAptitude;
+                aptitudes[7 + course.surface] = build.surfaceAptitude;
+              }
+              return scoreUma({...build, aptitudes});
+            }
+
+            function formatRating(value) {
+              return Number.isFinite(value) ? value.toLocaleString('en-US') : 'Unavailable';
+            }
+
+            function filename(name, value) {
+              const slug = (name ?? '').normalize('NFKD').replace(/\p{Mark}/gu, '').toLowerCase()
+                .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+              return `${slug || 'uma'}_${Number.isFinite(value) ? value : 'rating_unavailable'}.json`;
             }
 
             function parse(text) {
@@ -299,16 +394,16 @@ jobs:
               input.click();
             }
 
-            function exportFile(build) {
+            function exportFile(build, name, value) {
               const url = URL.createObjectURL(new Blob([stringify(build)], {type: 'application/json'}));
               const link = document.createElement('a');
               link.href = url;
-              link.download = build.outfitId ? `uma-${build.outfitId}.json` : 'horse.json';
+              link.download = filename(name, value);
               link.click();
               setTimeout(() => URL.revokeObjectURL(url), 1000);
             }
 
-            globalThis.UmaFork = Object.freeze({total, summary, parse, stringify, importFile, exportFile});
+            globalThis.UmaFork = Object.freeze({total, summary, rating, formatRating, filename, parse, stringify, importFile, exportFile});
           })();
           UMA_FORK_FILE
           cat > scripts/smoke.test.mjs <<'UMA_FORK_FILE'
@@ -346,7 +441,19 @@ jobs:
             const expected = skills[white].baseCost + skills[lower].baseCost;
             assert.ok(expected > 0);
             assert.equal(io.total([white, lower, white]), expected);
-            assert.match(io.summary([white, '99999999']), /\+ SP$/);
+            assert.match(io.summary([white, '99999999']), /\+$/);
+          });
+
+          test('rating uses the current comparison aptitudes without modifying the saved build', () => {
+            const build = {...kachi, aptitudes: Array(10).fill('B')};
+            let rated;
+            const score = io.rating(build, value => { rated = value; return 22765; }, {distanceType: 2, surface: 1});
+            assert.deepEqual(Array.from(rated.aptitudes), ['B', 'S', 'B', 'B', 'B', 'A', 'B', 'B', 'A', 'B']);
+            assert.deepEqual(build.aptitudes, Array(10).fill('B'));
+            assert.equal(io.formatRating(score), '22,765');
+            assert.equal(io.filename('Taiki Shuttle', score), 'taiki_shuttle_22765.json');
+            assert.equal(io.filename('T.M. Opera O', score), 't_m_opera_o_22765.json');
+            assert.equal(io.filename('', score), 'uma_22765.json');
           });
 
           test('all original modes load the integrated bundle and the engine worker is present', () => {
@@ -358,7 +465,9 @@ jobs:
               assert.ok(bundle.includes(label), label);
             }
             assert.match(bundle, /UmaFork\.importFile\(value=>\w+\(\w+\(value\)\)\)/);
-            assert.match(bundle, /UmaFork\.summary\(\w+\(\)\.skills\.values\(\)\)/);
+            assert.match(bundle, /UmaFork\.summary\(forkBuild\.skills\.values\(\)\)/);
+            assert.match(bundle, /UmaFork\.formatRating\(forkRating\)/);
+            assert.equal([...bundle.matchAll(/compareSummary:\w+==0/g)].length, 2);
             assert.match(bundle, /new URL\("\.",document\.baseURI\)/);
             assert.match(read('simulator.worker.js'), /postMessage/);
           });
