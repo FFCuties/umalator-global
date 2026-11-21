@@ -55,7 +55,7 @@ jobs:
           SUMMARY_CSS = '''
           .horseSkillHeader.fork-compare-header{background:none;border:0;box-shadow:none;margin:8px auto}
           .fork-build-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.4rem;padding:.15rem .4rem;width:100%;box-sizing:border-box}
-          .fork-build-summary>output,.fork-build-summary>.fork-skills-title{background:#a8cf89;border:1px solid #557777;border-radius:999px;color:#183421;padding:.22rem .35rem;text-align:center;font-weight:600;font-size:clamp(.85rem,2.6vw,1.15rem);line-height:1.3}
+          .fork-build-summary>output,.fork-build-summary>.fork-skills-title{background:linear-gradient(#a8e305,#61ae16) padding-box,linear-gradient(#addb3c,#558f18) border-box;border:2px solid transparent;border-radius:36px;box-shadow:0 3px #b4b2c0;color:#fff;padding:.22rem .35rem;text-align:center;font-weight:700;font-size:clamp(.85rem,2.6vw,1.15rem);line-height:1.3}
           .fork-build-summary>.fork-skills-title{grid-column:1/-1}
           '''
 
