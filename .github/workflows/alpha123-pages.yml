@@ -1,0 +1,383 @@
+name: Sync Alpha123 Global and deploy
+
+on:
+  push:
+    branches: [main, master]
+  schedule:
+    - cron: '23 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    if: github.repository != 'alpha123/uma-tools'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/configure-pages@v5
+      - name: Fetch current Alpha123 Global
+        uses: actions/checkout@v6
+        with:
+          repository: alpha123/uma-tools
+          ref: master
+          path: upstream
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /LICENSE
+            /umalator-global/
+            /umalator/app.tsx
+            /components/HorseDef.tsx
+      - name: Build and test
+        run: |
+          mkdir -p scripts overlay
+          cat > scripts/prepare.py <<'UMA_FORK_FILE'
+          """Build Alpha123's original Global UI with the JSON and SP changes."""
+
+          import argparse
+          import json
+          import re
+          import shutil
+          from pathlib import Path
+          from zipfile import ZipFile
+
+
+          ASSETS = "https://alpha123.github.io/uma-tools/"
+          BASE_PATH = 'new URL(".",document.baseURI).pathname.replace(/\\/$/,"")'
+          POINTER = 'globalThis.UmaFork'
+          ROUTES = ('index.html', 'compare/index.html', 'skills/index.html', 'stamina/index.html')
+
+
+          def replace_once(text, anchor, replacement):
+              if text.count(anchor) != 1:
+                  raise ValueError(f"Upstream integration anchor changed: {anchor[:105]}")
+              return text.replace(anchor, replacement, 1)
+
+
+          def match_once(text, pattern):
+              matches = list(re.finditer(pattern, text))
+              if len(matches) != 1:
+                  raise ValueError(f"Upstream integration pattern changed: {pattern[:105]}")
+              return matches[0]
+
+
+          def integrate_bundle(bundle):
+              # Build from the exact browser bundle Alpha123 ships. The paired source
+              # changes below provide the readable equivalent and fail on drift as well.
+              io = match_once(bundle,
+                              r"function (\w+)\(\)\{window\.navigator\.clipboard\.writeText\(JSON\.stringify"
+                              r"\((\w+)\((\w+)\(\)\)\)\),document\.activeElement\.blur\(\)\}"
+                              r"async function (\w+)\(\)\{let (\w+)=await navigator\.clipboard\.readText"
+                              r"\(\)\.then\(JSON\.parse\);\5\.hasOwnProperty\(\"outfitId\"\)&&"
+                              r"\5\.hasOwnProperty\(\"skills\"\)&&(\w+)\((\w+)\(\5\)\)")
+              _, serialize, current, paste, _, update, deserialize = io.groups()
+              item = match_once(bundle, rf'(\w+)\("li",null,\1\("button",\{{onClick:{paste}\}},"Paste from clipboard"\)\)')
+              h = item[1]
+              menu = (
+                  item[0] + f',{h}("li",null,{h}("button",{{onClick:()=>{POINTER}.importFile'
+                  f'(value=>{update}({deserialize}(value)))}},"Import JSON")),'
+                  f'{h}("li",null,{h}("button",{{onClick:()=>{POINTER}.exportFile({serialize}({current}()))}},"Export JSON"))'
+              )
+              bundle = replace_once(bundle, item[0], menu)
+              header = match_once(bundle, r'(\w+)\("div",\{class:"horseSkillHeader"\},\w+\.skillHeader\|\|\1\(\w+,\{id:"skillheader"\}\)\)')
+              h = header[1]
+              label = (
+                  f',{h}("output",{{class:"fork-sp",title:"Total base skill points including prerequisites"}},'
+                  f'{POINTER}.summary({current}().skills.values())))'
+              )
+              bundle = replace_once(bundle, header[0], header[0][:-1] + label)
+              bundle = replace_once(bundle, '("/uma-tools/umalator-global",', '(' + BASE_PATH + ',')
+              telemetry = match_once(bundle, r'\b(\w+)\(\);try\{window\.parent&&window\.parent\.location\.hostname')
+              bundle = replace_once(bundle, telemetry[0], 'try{window.parent&&window.parent.location.hostname')
+              return localize(bundle)
+
+
+          def localize(text):
+              return (text.replace('/uma-tools/icons', ASSETS + 'icons')
+                      .replace('/uma-tools/fonts', ASSETS + 'fonts')
+                      .replace('/uma-tools/courseimages', ASSETS + 'courseimages')
+                      .replace('/uma-tools/vendor', ASSETS + 'vendor')
+                      .replace('../vendor/opencv.js', ASSETS + 'vendor/opencv.js'))
+
+
+          def readable_changes(read, destination):
+              horse = read('components/HorseDef.tsx').decode()
+              menu = '<li><button onClick={clipbdPaste}>Paste from clipboard</button></li>'
+              horse = replace_once(horse, menu, menu + f'''
+                                                  <li><button onClick={{() => {POINTER}.importFile(value => setUma(deserializeUma(value)))}}>Import JSON</button></li>
+                                                  <li><button onClick={{() => {POINTER}.exportFile(serializeUma(uma_GetCurrent()))}}>Export JSON</button></li>''')
+              title = '{props.skillHeader || <Text id="skillheader" />}'
+              horse = replace_once(horse, title, title + f'''
+                              <output class="fork-sp" title="Total base skill points including prerequisites">{{
+                                  {POINTER}.summary(uma_GetCurrent().skills.values())
+                              }}</output>''')
+              app = read('umalator/app.tsx').decode()
+              app = replace_once(app, "'/uma-tools/umalator-global'", BASE_PATH)
+              app = replace_once(app, 'initTelemetry();', '// The fork does not initialize upstream analytics.')
+              for name, content in [('components/HorseDef.tsx', horse), ('umalator/app.tsx', app)]:
+                  target = destination / name
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  target.write_text(localize(content), encoding='utf-8')
+
+
+          def prepare(read, sha, dest, files):
+              if not re.fullmatch(r'[0-9a-f]{40}', sha):
+                  raise ValueError("Expected a full Alpha123 commit SHA")
+              base = 'umalator-global/'
+              meta = json.loads(read(base + 'skill_meta.json'))
+              skills = json.loads(read(base + 'skill_data.json'))
+              catalog = {'revision': sha, 'skills': {
+                  key: {**meta[key], 'rarity': value['rarity']} for key, value in skills.items()
+              }}
+              bundle = integrate_bundle(read(base + 'bundle.js').decode())
+              worker = read(base + 'simulator.worker.js')
+              if not skills or not all(f'"{id}":'.encode() in worker for id in skills):
+                  raise ValueError("Upstream worker and skill data have different skill IDs")
+              dest.mkdir(parents=True, exist_ok=True)
+              (dest / 'bundle.js').write_text(bundle, encoding='utf-8')
+              (dest / 'simulator.worker.js').write_bytes(worker)
+              (dest / 'bundle.css').write_text(localize(read(base + 'bundle.css').decode()) +
+                                              '\n.fork-sp{margin-inline-start:.65em;white-space:nowrap;font-weight:600}\n',
+                                              encoding='utf-8')
+              (dest / 'skill-catalog.js').write_text('globalThis.UmaForkData=' + json.dumps(catalog) + ';', encoding='utf-8')
+              shutil.copyfile(files / 'overlay/build-io.js', dest / 'build-io.js')
+              (dest / 'LICENSE').write_bytes(read('LICENSE'))
+              readable_changes(read, dest / 'source-changes')
+              for route in ROUTES:
+                  html = read(base + route).decode()
+                  html = replace_once(html, '<script src="bundle.js"></script>',
+                                      '<script src="skill-catalog.js"></script>\n'
+                                      '\t\t<script src="build-io.js"></script>\n'
+                                      '\t\t<script src="bundle.js"></script>')
+                  html = replace_once(html, '</body>',
+                                      f'<div style="margin:.6rem;font-size:.82rem">Alpha123 Global fork · '
+                                      f'<a href="https://github.com/alpha123/uma-tools/tree/{sha}">Upstream {sha[:7]}</a> · '
+                                      '<a href="source-changes/">Source changes</a> · <a href="LICENSE">GPL-3.0</a></div>\n\t</body>')
+                  target = dest / route
+                  target.parent.mkdir(parents=True, exist_ok=True)
+                  target.write_text(html, encoding='utf-8')
+              shutil.copyfile(files / 'scripts/prepare.py', dest / 'source-changes/prepare.py')
+              note = (f'<!doctype html><meta charset="utf-8"><title>Fork source changes</title>'
+                      f'<h1>Alpha123 Global fork source</h1><p>Changes dated 2026-11-21. GPL-3.0-or-later.</p>'
+                      f'<ul><li><a href="https://github.com/alpha123/uma-tools/tree/{sha}">Alpha123 source at {sha[:7]}</a></li>'
+                      '<li><a href="components/HorseDef.tsx">Modified runner editor</a></li>'
+                      '<li><a href="umalator/app.tsx">Modified app entry</a></li>'
+                      '<li><a href="../build-io.js">JSON compatibility and SP tracker</a></li>'
+                      '<li><a href="prepare.py">Build script</a></li></ul>')
+              (dest / 'source-changes/index.html').write_text(note, encoding='utf-8')
+
+
+          def main():
+              parser = argparse.ArgumentParser(description=__doc__)
+              parser.add_argument('upstream', type=Path)
+              parser.add_argument('--sha')
+              parser.add_argument('--out', type=Path, default=Path('dist'))
+              args = parser.parse_args()
+              root = Path(__file__).resolve().parents[1]
+              if args.upstream.is_file():
+                  with ZipFile(args.upstream) as source:
+                      prefix = source.namelist()[0].split('/')[0]
+                      prepare(lambda name: source.read(f'{prefix}/{name}'), args.sha or source.comment.decode(), args.out, root)
+              else:
+                  if not args.sha:
+                      parser.error('--sha is required for a checkout')
+                  prepare(lambda name: (args.upstream / name).read_bytes(), args.sha, args.out, root)
+
+
+          if __name__ == '__main__':
+              main()
+          UMA_FORK_FILE
+          cat > overlay/build-io.js <<'UMA_FORK_FILE'
+          // SPDX-License-Identifier: GPL-3.0-or-later
+          (() => {
+            'use strict';
+            const {skills} = globalThis.UmaForkData;
+            const groups = new Map();
+            const costs = new Map();
+            for (const [id, skill] of Object.entries(skills)) {
+              const group = groups.get(skill.groupId) ?? [];
+              group.push(id);
+              groups.set(skill.groupId, group);
+            }
+            const negative = id => skills[id].iconId.endsWith('4');
+            for (const group of groups.values()) {
+              group.sort((a, b) => Number(negative(a)) - Number(negative(b)) ||
+                skills[a].rarity - skills[b].rarity || Number(b) - Number(a));
+              let runningCost = 0;
+              for (const id of group) {
+                const base = skills[id].baseCost;
+                if (!negative(id)) runningCost += base;
+                costs.set(id, negative(id) ? base : runningCost);
+              }
+            }
+
+            function total(ids) {
+              const byGroup = new Map();
+              for (const id of ids) {
+                if (!Object.hasOwn(skills, id)) continue;
+                const group = skills[id].groupId;
+                byGroup.set(group, Math.max(byGroup.get(group) ?? 0, costs.get(id)));
+              }
+              return [...byGroup.values()].reduce((sum, cost) => sum + cost, 0);
+            }
+
+            function summary(ids) {
+              const selected = [...ids];
+              const partial = selected.some(id => !Object.hasOwn(skills, id));
+              return `${total(selected).toLocaleString('en-US')}${partial ? '+' : ''} SP`;
+            }
+
+            function parse(text) {
+              const source = JSON.parse(text.replace(/^\uFEFF/, ''));
+              if (!source || typeof source !== 'object' || !Array.isArray(source.skills) ||
+                  !Object.hasOwn(source, 'outfitId')) {
+                throw new Error('Choose an individual Uma build JSON from Kachi or Alpha123.');
+              }
+              const build = {
+                aptitudes: ['S', 'S', 'S', 'S', 'A', 'A', 'A', 'A', 'A', 'A'],
+                ...source, outfitId: String(source.outfitId), skills: source.skills.map(String),
+              };
+              for (const stat of ['speed', 'stamina', 'power', 'guts', 'wisdom']) {
+                if (!Number.isInteger(build[stat]) || build[stat] < 1) throw new Error(`Invalid ${stat}.`);
+              }
+              if (!['Nige', 'Senkou', 'Sasi', 'Oikomi', 'Oonige'].includes(build.strategy)) {
+                throw new Error('Invalid running strategy.');
+              }
+              const grade = value => typeof value === 'string' && /^[SABCDEFG]$/.test(value);
+              for (const field of ['distanceAptitude', 'surfaceAptitude', 'strategyAptitude']) {
+                if (!grade(build[field])) throw new Error(`Invalid ${field}.`);
+              }
+              if (!Array.isArray(build.aptitudes) || build.aptitudes.length !== 10 || !build.aptitudes.every(grade)) {
+                throw new Error('Invalid aptitude list.');
+              }
+              if (!/^(\d{6})?$/.test(build.outfitId)) throw new Error('Invalid outfit ID.');
+              const unsupported = build.skills.filter(id => !Object.hasOwn(skills, id));
+              if (unsupported.length) throw new Error(`Skills unavailable in this Alpha123 update: ${[...new Set(unsupported)].join(', ')}.`);
+              const policies = new Map(Object.entries(build.samplePolicies ?? {}));
+              for (const [id, pos] of Object.entries(build.forcedSkillPositions ?? {})) {
+                if (!Number.isFinite(pos) || pos < 0) throw new Error(`Invalid forced position for skill ${id}.`);
+                policies.set(id, {policy: 'fixed', pos});
+              }
+              for (const [id, spec] of policies) {
+                if (!spec || !['immediate', 'fixed', 'random', 'straight-random', 'all-corner-random', 'log-normal', 'erlang'].includes(spec.policy) ||
+                    (spec.policy === 'fixed' && (!Number.isFinite(spec.pos) || spec.pos < 0))) {
+                  throw new Error(`Invalid activation policy for skill ${id}.`);
+                }
+              }
+              delete build.forcedSkillPositions;
+              build.samplePolicies = Object.fromEntries(policies);
+              return build;
+            }
+
+            function stringify(build) {
+              const forcedSkillPositions = Object.fromEntries(Object.entries(build.samplePolicies ?? {})
+                .filter(([, sample]) => sample.policy === 'fixed')
+                .map(([id, sample]) => [id, sample.pos]));
+              return JSON.stringify({...build, forcedSkillPositions}, null, 2) + '\n';
+            }
+
+            function importFile(apply) {
+              const input = document.createElement('input');
+              input.type = 'file';
+              input.accept = '.json,application/json';
+              input.addEventListener('change', async () => {
+                const file = input.files[0];
+                if (!file) return;
+                try {
+                  if (file.size > 1024 * 1024) throw new Error('Choose a JSON file under 1 MB.');
+                  apply(parse(await file.text()));
+                } catch (error) {
+                  window.alert(`Could not import build. ${error.message}`);
+                }
+              }, {once: true});
+              input.click();
+            }
+
+            function exportFile(build) {
+              const url = URL.createObjectURL(new Blob([stringify(build)], {type: 'application/json'}));
+              const link = document.createElement('a');
+              link.href = url;
+              link.download = build.outfitId ? `uma-${build.outfitId}.json` : 'horse.json';
+              link.click();
+              setTimeout(() => URL.revokeObjectURL(url), 1000);
+            }
+
+            globalThis.UmaFork = Object.freeze({total, summary, parse, stringify, importFile, exportFile});
+          })();
+          UMA_FORK_FILE
+          cat > scripts/smoke.test.mjs <<'UMA_FORK_FILE'
+          import {readFileSync} from 'node:fs';
+          import {runInNewContext} from 'node:vm';
+          import {test} from 'node:test';
+          import assert from 'node:assert/strict';
+
+          const read = name => readFileSync(new URL(`../dist/${name}`, import.meta.url), 'utf8');
+          const realm = {};
+          runInNewContext(read('skill-catalog.js'), realm);
+          runInNewContext(read('build-io.js'), realm);
+          const {UmaFork: io, UmaForkData: {skills}} = realm;
+          const white = Object.keys(skills).find(id => skills[id].baseCost > 0 &&
+            skills[id].rarity === 1 && !skills[id].iconId.endsWith('4') && skills[String(+id + 1)]?.groupId === skills[id].groupId &&
+            skills[String(+id + 1)].rarity === 1 && !skills[String(+id + 1)].iconId.endsWith('4'));
+          const lower = String(+white + 1);
+          const kachi = {
+            outfitId: '', speed: 1200, stamina: 1200, power: 800, guts: 400, wisdom: 400,
+            strategy: 'Senkou', distanceAptitude: 'S', surfaceAptitude: 'A', strategyAptitude: 'A',
+            mood: 2, skills: [], forcedSkillPositions: {},
+          };
+
+          test('Kachi build fields round-trip and forced positions become engine policies', () => {
+            const fixture = {...kachi, skills: [white], forcedSkillPositions: {[white]: 240.5}};
+            const imported = io.parse(JSON.stringify(fixture));
+            assert.equal(imported.samplePolicies[white].policy, 'fixed');
+            assert.equal(imported.samplePolicies[white].pos, 240.5);
+            const result = JSON.parse(io.stringify(imported));
+            for (const key of Object.keys(fixture)) assert.deepEqual(result[key], fixture[key]);
+            assert.throws(() => io.parse(JSON.stringify({...kachi, skills: ['99999999']})), /Skills unavailable/);
+          });
+
+          test('total skill points count each upgrade chain once', () => {
+            const expected = skills[white].baseCost + skills[lower].baseCost;
+            assert.ok(expected > 0);
+            assert.equal(io.total([white, lower, white]), expected);
+            assert.match(io.summary([white, '99999999']), /\+ SP$/);
+          });
+
+          test('all original modes load the integrated bundle and the engine worker is present', () => {
+            for (const route of ['index.html', 'compare/index.html', 'skills/index.html', 'stamina/index.html']) {
+              assert.match(read(route), /skill-catalog\.js[\s\S]+build-io\.js[\s\S]+bundle\.js/);
+            }
+            const bundle = read('bundle.js');
+            for (const label of ['Save & load', 'Import JSON', 'Export JSON', 'Total base skill points including prerequisites']) {
+              assert.ok(bundle.includes(label), label);
+            }
+            assert.match(bundle, /UmaFork\.importFile\(value=>\w+\(\w+\(value\)\)\)/);
+            assert.match(bundle, /UmaFork\.summary\(\w+\(\)\.skills\.values\(\)\)/);
+            assert.match(bundle, /new URL\("\.",document\.baseURI\)/);
+            assert.match(read('simulator.worker.js'), /postMessage/);
+          });
+          UMA_FORK_FILE
+          python3 scripts/prepare.py upstream --sha "$(git -C upstream rev-parse HEAD)"
+          node --check dist/bundle.js
+          node --test scripts/smoke.test.mjs
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment
