@@ -44,6 +44,7 @@ jobs:
           import json
           import re
           import shutil
+          from hashlib import sha256
           from pathlib import Path
           from zipfile import ZipFile
 
@@ -215,15 +216,17 @@ jobs:
               dest.mkdir(parents=True, exist_ok=True)
               (dest / 'bundle.js').write_text(bundle, encoding='utf-8')
               (dest / 'simulator.worker.js').write_bytes(worker)
-              (dest / 'bundle.css').write_text(localize(read(base + 'bundle.css').decode()) +
-                                              '\n.fork-sp{margin-inline-start:.65em;white-space:nowrap;font-weight:600}\n' + SUMMARY_CSS,
-                                              encoding='utf-8')
+              css = (localize(read(base + 'bundle.css').decode()) +
+                     '\n.fork-sp{margin-inline-start:.65em;white-space:nowrap;font-weight:600}\n' + SUMMARY_CSS).encode('utf-8')
+              (dest / 'bundle.css').write_bytes(css)
+              css_version = sha256(css).hexdigest()[:12]
               (dest / 'skill-catalog.js').write_text('globalThis.UmaForkData=' + json.dumps(catalog) + ';', encoding='utf-8')
               shutil.copyfile(files / 'overlay/build-io.js', dest / 'build-io.js')
               (dest / 'LICENSE').write_bytes(read('LICENSE'))
               readable_changes(read, dest / 'source-changes')
               for route in ROUTES:
                   html = read(base + route).decode()
+                  html = replace_once(html, 'href="bundle.css"', f'href="bundle.css?v={css_version}"')
                   html = replace_once(html, '<script src="bundle.js"></script>',
                                       '<script src="skill-catalog.js"></script>\n'
                                       '\t\t<script src="build-io.js"></script>\n'
