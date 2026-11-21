@@ -222,6 +222,7 @@ jobs:
               css_version = sha256(css).hexdigest()[:12]
               (dest / 'skill-catalog.js').write_text('globalThis.UmaForkData=' + json.dumps(catalog) + ';', encoding='utf-8')
               shutil.copyfile(files / 'overlay/build-io.js', dest / 'build-io.js')
+              io_version = sha256((dest / 'build-io.js').read_bytes()).hexdigest()[:12]
               (dest / 'LICENSE').write_bytes(read('LICENSE'))
               readable_changes(read, dest / 'source-changes')
               for route in ROUTES:
@@ -229,7 +230,7 @@ jobs:
                   html = replace_once(html, 'href="bundle.css"', f'href="bundle.css?v={css_version}"')
                   html = replace_once(html, '<script src="bundle.js"></script>',
                                       '<script src="skill-catalog.js"></script>\n'
-                                      '\t\t<script src="build-io.js"></script>\n'
+                                      f'\t\t<script src="build-io.js?v={io_version}"></script>\n'
                                       '\t\t<script src="bundle.js"></script>')
                   html = replace_once(html, '</body>',
                                       f'<div style="margin:.6rem;font-size:.82rem">Alpha123 Global fork · '
@@ -374,10 +375,11 @@ jobs:
             }
 
             function stringify(build) {
+              const {aptitudes, ...exportedBuild} = build;
               const forcedSkillPositions = Object.fromEntries(Object.entries(build.samplePolicies ?? {})
                 .filter(([, sample]) => sample.policy === 'fixed')
                 .map(([id, sample]) => [id, sample.pos]));
-              return JSON.stringify({...build, forcedSkillPositions}, null, 2) + '\n';
+              return JSON.stringify({...exportedBuild, forcedSkillPositions}, null, 2) + '\n';
             }
 
             function importFile(apply) {
@@ -436,6 +438,7 @@ jobs:
             assert.equal(imported.samplePolicies[white].policy, 'fixed');
             assert.equal(imported.samplePolicies[white].pos, 240.5);
             const result = JSON.parse(io.stringify(imported));
+            assert.equal(Object.hasOwn(result, 'aptitudes'), false);
             for (const key of Object.keys(fixture)) assert.deepEqual(result[key], fixture[key]);
             assert.throws(() => io.parse(JSON.stringify({...kachi, skills: ['99999999']})), /Skills unavailable/);
           });
