@@ -117,6 +117,27 @@ jobs:
                       .replace('../vendor/opencv.js', ASSETS + 'vendor/opencv.js'))
 
 
+          def integrate_autosave(bundle):
+              serializers = match_once(bundle, rf'{re.escape(POINTER)}\.exportFile\((\w+)\(build\),')
+              loader = match_once(bundle,
+                  r'function (\w+)\(\)\{window\.location\.hash&&(\w+)\(window\.location\.hash\.slice\(1\)\)'
+                  r'\.then\((\w+)=>\{(\w+)\.setState\(Object\.assign\(\{\},\4\.ref\.current\.state,\3\)\),(\w+)\(!\w+\)\}\)\}'
+                  r'return (\w+)\(function\(\)\{\1\(\),window\.addEventListener\("hashchange",\1\)\},\[\]\),')
+              _, decode, _, state, remount, effect = loader.groups()
+              deserialize = match_once(bundle,
+                  rf'{re.escape(POINTER)}\.importFile\(value=>\w+\((\w+)\(value\)\)\)')[1]
+              defaults = match_once(bundle, r'chartMode:"all",chartSkills:null\}\)\),\[\w+,\w+\]=\w+\(!1\);')
+              bundle = replace_once(bundle, defaults[0], defaults[0].replace('chartSkills:null}',
+                  f'chartSkills:null,...{POINTER}.restoreDraft({deserialize})}}'))
+              chart = match_once(bundle, r'(\w+)=\w+\((\w+)\.chartSkills\),\[(\w+),(\w+)\]=\w+\(\1\|\|\[\]\),\[\w+,\w+\]=(\w+)\(\2\.chartMode\)')
+              loaded, optics, skills, set_skills, lens = chart.groups()
+              bundle = replace_once(bundle, chart[0], f'[{loaded},{set_skills}]={lens}({optics}.chartSkills),'
+                  f'{skills}={loaded}||[],{chart[0].split("||[]),",1)[1]}')
+              return replace_once(bundle, loader[0],
+                  f'return {effect}(()=>{POINTER}.watchDraft({state},{serializers[1]},{decode},'
+                  f'loaded=>{{{state}.setState({{...{state}.ref.current.state,...loaded}});{remount}(key=>!key)}}),[]),')
+
+
           def integrate_rating_bundle(bundle):
               score = match_once(bundle, r'(\w+)=-1;if\((\w+)\.showScore\)\{let (\w+)=(\w+)\(\2\.state\);\1=(\w+)\(\(\)=>(\w+)\(\3\),\[\3\]\)\}')
               value, props, _, getter, memo, calculate = score.groups()
@@ -202,10 +223,25 @@ jobs:
               app = replace_once(app, "'/uma-tools/umalator-global'", BASE_PATH)
               app = replace_once(app, 'initTelemetry();', '// The fork does not initialize upstream analytics.')
               horse, app = readable_rating_changes(horse, app)
+              app = readable_autosave(app)
               for name, content in [('components/HorseDef.tsx', horse), ('umalator/app.tsx', app)]:
                   target = destination / name
                   target.parent.mkdir(parents=True, exist_ok=True)
                   target.write_text(localize(content), encoding='utf-8')
+
+
+          def readable_autosave(app):
+              chart = match_once(app, r'const loadedChartSkills = useGetter\(O\.chartSkills\);\s+const \[chartSkills, setChartSkills\] = useState\(loadedChartSkills \|\| \[\]\);')
+              app = replace_once(app, chart[0], 'const [loadedChartSkills, setChartSkills] = useLens(O.chartSkills);\n'
+                  '\tconst chartSkills = loadedChartSkills || [];')
+              defaults = match_once(app, r"chartMode: 'all',\s+chartSkills: null\s+\}\)\);")
+              app = replace_once(app, defaults[0], defaults[0].replace('chartSkills: null',
+                  f'chartSkills: null,\n\t\t...{POINTER}.restoreDraft(deserializeUma)'))
+              loader = match_once(app, r'function loadState\(\) \{[\s\S]+?window\.addEventListener\(\'hashchange\', loadState\);\s+\}, \[\]\);')
+              return replace_once(app, loader[0], f'''useEffect(() => {POINTER}.watchDraft(state, serializeUma, deserialize, loaded => {{
+          		state.setState({{...state.ref.current.state, ...loaded}});
+          		setKey(key => !key);
+          	}}), []);''')
 
 
           def prepare(read, sha, dest, files):
@@ -217,7 +253,7 @@ jobs:
               catalog = {'revision': sha, 'skills': {
                   key: {**meta[key], 'rarity': value['rarity']} for key, value in skills.items()
               }}
-              bundle = integrate_rating_bundle(integrate_bundle(read(base + 'bundle.js').decode()))
+              bundle = integrate_autosave(integrate_rating_bundle(integrate_bundle(read(base + 'bundle.js').decode())))
               worker = read(base + 'simulator.worker.js')
               if not skills or not all(f'"{id}":'.encode() in worker for id in skills):
                   raise ValueError("Upstream worker and skill data have different skill IDs")
@@ -417,7 +453,82 @@ jobs:
               setTimeout(() => URL.revokeObjectURL(url), 1000);
             }
 
-            globalThis.UmaFork = Object.freeze({total, summary, rating, formatRating, filename, parse, stringify, importFile, exportFile});
+            const draftKey = 'umalator-global-sp:session:v1';
+            const draftFields = [
+              'courseId', 'racedef', 'nsamples', 'seed', 'usePosKeep', 'useCompeteTop',
+              'useIntChecks', 'useShowHp', 'displayedRun', 'chartMode', 'chartSkills',
+            ];
+            const draftRunners = ['uma1', 'uma2', 'debufUma'];
+
+            function draftFieldsFrom(state) {
+              return Object.fromEntries(draftFields.filter(key => Object.hasOwn(state, key))
+                .map(key => [key, state[key]]));
+            }
+
+            function restoreDraft(deserialize) {
+              try {
+                const saved = JSON.parse(window.localStorage.getItem(draftKey));
+                if (!saved) return {};
+                const restored = draftFieldsFrom(saved);
+                for (const key of draftRunners) restored[key] = deserialize(parse(JSON.stringify(saved[key])));
+                restored.hintLevels = new Map(saved.hintLevels);
+                return restored;
+              } catch {
+                return {};
+              }
+            }
+
+            function watchDraft(state, serialize, hash, loadHash) {
+              let loading = false;
+              let generation = 0;
+              let lastSaved;
+              const save = next => {
+                if (loading) return;
+                try {
+                  const draft = draftFieldsFrom(next);
+                  for (const key of draftRunners) draft[key] = serialize(next[key]);
+                  draft.hintLevels = [...next.hintLevels];
+                  const text = JSON.stringify(draft);
+                  if (text !== lastSaved) {
+                    window.localStorage.setItem(draftKey, text);
+                    lastSaved = text;
+                  }
+                } catch {
+                  // The simulator still works when browser storage is disabled or full.
+                }
+              };
+              const onHashChange = async () => {
+                const value = window.location.hash;
+                if (!value || value === '#') return;
+                loading = true;
+                const request = ++generation;
+                try {
+                  const loaded = await hash(value.slice(1));
+                  if (request === generation && window.location.hash === value) {
+                    loadHash(loaded);
+                    window.history.replaceState(window.history.state, '', window.location.pathname + window.location.search);
+                  }
+                } catch {
+                  // An unreadable share link leaves the current draft available.
+                } finally {
+                  if (request === generation) {
+                    loading = false;
+                    save(state.ref.current.state);
+                  }
+                }
+              };
+              const listeners = state.ref.current.listeners;
+              listeners.add(save);
+              window.addEventListener('hashchange', onHashChange);
+              onHashChange();
+              return () => {
+                generation++;
+                listeners.delete(save);
+                window.removeEventListener('hashchange', onHashChange);
+              };
+            }
+
+            globalThis.UmaFork = Object.freeze({total, summary, rating, formatRating, filename, parse, stringify, importFile, exportFile, restoreDraft, watchDraft});
           })();
           UMA_FORK_FILE
           cat > scripts/smoke.test.mjs <<'UMA_FORK_FILE'
