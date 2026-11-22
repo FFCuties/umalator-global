@@ -84,6 +84,10 @@ jobs:
                               r"\(\)\.then\(JSON\.parse\);\5\.hasOwnProperty\(\"outfitId\"\)&&"
                               r"\5\.hasOwnProperty\(\"skills\"\)&&(\w+)\((\w+)\(\5\)\)")
               _, serialize, current, paste, _, update, deserialize = io.groups()
+              copy_json = f'JSON.stringify({serialize}({current}()))'
+              clipboard = io[0].replace(copy_json, f'{POINTER}.stringify({serialize}({current}()))', 1)
+              clipboard = clipboard.replace('.then(JSON.parse)', f'.then({POINTER}.parse)', 1)
+              bundle = replace_once(bundle, io[0], clipboard)
               item = match_once(bundle, rf'(\w+)\("li",null,\1\("button",\{{onClick:{paste}\}},"Paste from clipboard"\)\)')
               h = item[1]
               menu = (
@@ -181,6 +185,10 @@ jobs:
 
           def readable_changes(read, destination):
               horse = read('components/HorseDef.tsx').decode()
+              horse = replace_once(horse, 'JSON.stringify(serializeUma(uma_GetCurrent()))',
+                                   f'{POINTER}.stringify(serializeUma(uma_GetCurrent()))')
+              horse = replace_once(horse, 'navigator.clipboard.readText().then(JSON.parse)',
+                                   f'navigator.clipboard.readText().then({POINTER}.parse)')
               menu = '<li><button onClick={clipbdPaste}>Paste from clipboard</button></li>'
               horse = replace_once(horse, menu, menu + f'''
                                                   <li><button onClick={{() => {POINTER}.importFile(value => setUma(deserializeUma(value)))}}>Import JSON</button></li>
@@ -215,6 +223,7 @@ jobs:
                   raise ValueError("Upstream worker and skill data have different skill IDs")
               dest.mkdir(parents=True, exist_ok=True)
               (dest / 'bundle.js').write_text(bundle, encoding='utf-8')
+              bundle_version = sha256(bundle.encode('utf-8')).hexdigest()[:12]
               (dest / 'simulator.worker.js').write_bytes(worker)
               css = (localize(read(base + 'bundle.css').decode()) +
                      '\n.fork-sp{margin-inline-start:.65em;white-space:nowrap;font-weight:600}\n' + SUMMARY_CSS).encode('utf-8')
@@ -231,7 +240,7 @@ jobs:
                   html = replace_once(html, '<script src="bundle.js"></script>',
                                       '<script src="skill-catalog.js"></script>\n'
                                       f'\t\t<script src="build-io.js?v={io_version}"></script>\n'
-                                      '\t\t<script src="bundle.js"></script>')
+                                      f'\t\t<script src="bundle.js?v={bundle_version}"></script>')
                   html = replace_once(html, '</body>',
                                       f'<div style="margin:.6rem;font-size:.82rem">Alpha123 Global fork · '
                                       f'<a href="https://github.com/alpha123/uma-tools/tree/{sha}">Upstream {sha[:7]}</a> · '
@@ -471,6 +480,8 @@ jobs:
               assert.ok(bundle.includes(label), label);
             }
             assert.match(bundle, /UmaFork\.importFile\(value=>\w+\(\w+\(value\)\)\)/);
+            assert.match(bundle, /clipboard\.writeText\(globalThis\.UmaFork\.stringify\(\w+\(\w+\(\)\)\)\)/);
+            assert.match(bundle, /clipboard\.readText\(\)\.then\(globalThis\.UmaFork\.parse\)/);
             assert.match(bundle, /UmaFork\.summary\(forkBuild\.skills\.values\(\)\)/);
             assert.match(bundle, /UmaFork\.formatRating\(forkRating\)/);
             assert.equal([...bundle.matchAll(/compareSummary:\w+==0/g)].length, 2);
