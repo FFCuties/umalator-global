@@ -57,10 +57,18 @@ jobs:
           POINTER = 'globalThis.UmaFork'
           ROUTES = ('index.html', 'compare/index.html', 'skills/index.html', 'stamina/index.html')
           SUMMARY_CSS = '''
-          .horseSkillHeader.fork-compare-header{background:none;border:0;box-shadow:none;margin:8px auto}
-          .fork-build-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:.4rem;padding:.15rem .4rem;width:100%;box-sizing:border-box}
-          .fork-build-summary>output,.fork-build-summary>.fork-skills-title{background:linear-gradient(#a8e305,#61ae16) padding-box,linear-gradient(#addb3c,#558f18) border-box;border:2px solid transparent;border-radius:36px;box-shadow:0 3px #b4b2c0;color:#fff;padding:.22rem .35rem;text-align:center;font-weight:700;font-size:clamp(.85rem,2.6vw,1.15rem);line-height:1.3}
-          .fork-build-summary>.fork-skills-title{grid-column:1/-1}
+          .horseAptitudes.fork-compact-aptitudes{grid-template-columns:repeat(2,minmax(0,1fr)) minmax(0,.68fr);grid-template-areas:"surface distance rank" "strategy style rank" "sp rating context";gap:8px 12px;margin:0 16px}
+          .horseAptitudes.fork-compact-aptitudes>.fork-aptitude{background:white;border:2px solid #e0d6cc;justify-content:initial;min-width:0}
+          .fork-surface{grid-area:surface}.fork-distance{grid-area:distance}.fork-strategy{grid-area:strategy}.fork-style{grid-area:style}
+          .horseAptitudes.fork-compact-aptitudes>.fork-live-rank{grid-area:rank;align-self:stretch;position:relative;align-items:center;justify-content:center;background:none;border:0;padding:0;height:auto;min-height:0}
+          .fork-live-rank>img{position:absolute;inset:0;margin:auto;max-width:100%;height:100%;max-height:5.2em;object-fit:contain;width:auto}
+          .fork-compact-aptitudes>output{background:linear-gradient(#a8e305,#61ae16) padding-box,linear-gradient(#addb3c,#558f18) border-box;border:2px solid transparent;border-radius:36px;box-shadow:0 3px #b4b2c0;color:#fff;padding:.28em .2em;text-align:center;font-weight:700;font-size:1em;line-height:1.3;min-width:0;white-space:nowrap}
+          .fork-sp-summary{grid-area:sp}.fork-rating-summary{grid-area:rating}
+          .horseAptitudes.fork-compact-aptitudes>.fork-race-context{grid-area:context;justify-content:center;flex-wrap:wrap;gap:3px;background:none;border:0;padding:0;height:auto;font-size:.88em;min-width:0}
+          .horseAptitudes.fork-compact-aptitudes>.fork-race-context>input{width:calc(2ch + 12px);font-size:1em;margin:0;text-align:center}
+          .fork-race-context>img{height:1.5em;width:auto;max-width:48%;object-fit:contain;cursor:pointer}
+          .horseSkillHeader.fork-compact-skills-title{margin:8px auto 12px;width:calc(100% - 32px)}
+          @media (orientation:portrait){.horseAptitudes.fork-compact-aptitudes{gap:8px 8px;margin:0 12px}.fork-compact-aptitudes>output{font-size:.88em}.horseAptitudes.fork-compact-aptitudes>.fork-race-context{font-size:.77em}}
           '''
           
           
@@ -153,16 +161,27 @@ jobs:
                   f'{value}={props}.showScore?forkRating:-1;')
               header = match_once(bundle, rf'(\w+)\("div",\{{class:"horseSkillHeader"\}},({props}\.skillHeader\|\|\1\(\w+,\{{id:"skillheader"\}}\)),(\1\("output",\{{class:"fork-sp",title:"[^"]+"\}},{re.escape(POINTER)}\.summary\(\w+\(\)\.skills\.values\(\)\)\))\)')
               h, title, old_sp = header.groups()
-              sp = f'{POINTER}.summary(forkBuild.skills.values())'
-              summary = (
-                  f'{h}("div",{{class:"fork-build-summary"}},'
-                  f'{h}("output",{{title:"Total base skill points including prerequisites"}},"SP : "+{sp}),'
-                  f'{h}("output",null,"Rating : "+{POINTER}.formatRating(forkRating)),'
-                  f'{h}("div",{{class:"fork-skills-title"}},{title}))'
-              )
+              rank_thresholds = match_once(bundle, r'(\w+)\.findIndex\(\w+=>\w+>\w+\.score\)')[1]
+              # Capture the actual upstream editor controls and reuse them without changing
+              # their state lenses or keyboard behavior. Only the layout is replaced.
+              control = rf'{h}\("div",null,{h}\("span",null,{h}\(\w+,\{{id:"select\.(?:surfaceaptitude|distanceaptitude|strategy|strategyaptitude)"\}}\)\),{h}\(\w+,\{{[as]:[^,]+,tabindex:\w+\(\)\}}\)\)'
+              mood = rf'{h}\("div",null,({h}\(\w+,\{{m:{props}\.state\.mood,tabindex:\w+\(\)\}}\))\)'
+              popularity = rf'{h}\("div",null,({h}\(\w+,\{{p:{props}\.state\.popularity,tabindex:\w+\(\)\}}\))\)'
+              apt = match_once(bundle, rf'case"simulation":return {h}\("div",\{{class:"horseAptitudes"\}},({control}),({control}),{mood},({control}),({control}),{popularity}\);case"full":')
+              surface, distance, mood_ui, strategy, style, popularity_ui = apt.groups()
+              controls = [item.replace(f'{h}("div",null,', f'{h}("div",{{class:"fork-aptitude fork-{area}"}},', 1)
+                          for item, area in zip((surface, distance, strategy, style), ('surface', 'distance', 'strategy', 'style'))]
+              rank = f'{POINTER}.rankIndex(forkRating,{rank_thresholds})'
+              rank_badge = (f'{h}("div",{{class:"fork-live-rank"}},{rank}===null?{h}("span",null,"—"):'
+                            f'{h}("img",{{src:`{ASSETS}icons/rank/utx_txt_rank_${{{rank}}}.png`,alt:"Live rank",title:"Rank for "+{POINTER}.formatRating(forkRating)}}))')
+              sp = f'{h}("output",{{class:"fork-sp-summary",title:"Total base skill points including prerequisites"}},"SP : "+{POINTER}.summary(forkBuild.skills.values()))'
+              rating = f'{h}("output",{{class:"fork-rating-summary"}},"Rating : "+{POINTER}.formatRating(forkRating))'
+              context = f'{h}("div",{{class:"fork-race-context"}},{popularity_ui},{mood_ui})'
+              compact = f'{h}("div",{{class:"horseAptitudes fork-compact-aptitudes"}},'+','.join([*controls,rank_badge,sp,rating,context])+')'
+              bundle = replace_once(bundle, apt[0], apt[0].replace('case"simulation":return ', f'case"simulation":return {props}.compareSummary?{compact}:', 1))
               bundle = replace_once(bundle, header[0],
-                  f'{h}("div",{{class:{props}.compareSummary?"horseSkillHeader fork-compare-header":"horseSkillHeader"}},'
-                  f'{props}.compareSummary?{summary}:[{title},{old_sp[:-1]}+" SP")])')
+                  f'{h}("div",{{class:{props}.compareSummary?"horseSkillHeader fork-compact-skills-title":"horseSkillHeader"}},'
+                  f'{props}.compareSummary?{title}:[{title},{old_sp[:-1]}+" SP")])')
               catalog = match_once(bundle, r'Object\.keys\((\w+)\)\.flatMap\((\w+)=>Object\.keys\(\1\[\2\]\.outfits\)\)')[1]
               export = match_once(bundle, rf'{re.escape(POINTER)}\.exportFile\((\w+)\((\w+)\(\)\)\)')
               serialize, current = export.groups()
@@ -190,16 +209,28 @@ jobs:
                                                           {POINTER}.rating(current, scoreUma, props.course));
                                                   }}''')
               head = match_once(horse, r'<div class="horseSkillHeader">[\s\S]+?</output>\s*</div>')
-              horse = replace_once(horse, head[0], f'''<div class={{props.compareSummary ? "horseSkillHeader fork-compare-header" : "horseSkillHeader"}}>
-          					{{props.compareSummary ? <div class="fork-build-summary">
-          						<output title="Total base skill points including prerequisites">SP : {{{POINTER}.summary(build.skills.values())}}</output>
-          						<output>Rating : {{{POINTER}.formatRating(rating)}}</output>
-          						<div class="fork-skills-title">{{props.skillHeader || <Text id="skillheader" />}}</div>
-          					</div> : <>
-          						{{props.skillHeader || <Text id="skillheader" />}}
-          						<output class="fork-sp" title="Total base skill points including prerequisites">{{{POINTER}.summary(build.skills.values())}} SP</output>
-          					</>}}
+              horse = replace_once(horse, head[0], f'''<div class={{props.compareSummary ? "horseSkillHeader fork-compact-skills-title" : "horseSkillHeader"}}>
+          					{{props.skillHeader || <Text id="skillheader" />}}
+          					{{!props.compareSummary && <output class="fork-sp" title="Total base skill points including prerequisites">{{{POINTER}.summary(build.skills.values())}} SP</output>}}
           				</div>''')
+              sim = match_once(horse, r"case 'simulation':\s+return \(")[0]
+              horse = replace_once(horse, sim, f'''case 'simulation':
+                      if (props.compareSummary) {{
+                          const rank = {POINTER}.rankIndex(rating, RankThresholds);
+                          return (
+                              <div class="horseAptitudes fork-compact-aptitudes">
+                                  <div class="fork-aptitude fork-surface"><span><Text id="select.surfaceaptitude" /></span><AptitudeSelect a={{props.state.surfaceAptitude}} tabindex={{tabnext()}} /></div>
+                                  <div class="fork-aptitude fork-distance"><span><Text id="select.distanceaptitude" /></span><AptitudeSelect a={{props.state.distanceAptitude}} tabindex={{tabnext()}} /></div>
+                                  <div class="fork-aptitude fork-strategy"><span><Text id="select.strategy" /></span><StrategySelect s={{l_strategy}} tabindex={{tabnext()}} /></div>
+                                  <div class="fork-aptitude fork-style"><span><Text id="select.strategyaptitude" /></span><AptitudeSelect a={{props.state.strategyAptitude}} tabindex={{tabnext()}} /></div>
+                                  <div class="fork-live-rank">{{rank === null ? <span>—</span> : <img src={{`/uma-tools/icons/rank/utx_txt_rank_${{rank}}.png`}} alt="Live rank" title={{"Rank for " + {POINTER}.formatRating(rating)}} />}}</div>
+                                  <output class="fork-sp-summary" title="Total base skill points including prerequisites">SP : {{{POINTER}.summary(build.skills.values())}}</output>
+                                  <output class="fork-rating-summary">Rating : {{{POINTER}.formatRating(rating)}}</output>
+                                  <div class="fork-race-context"><PopularitySelect p={{props.state.popularity}} tabindex={{tabnext()}} /><MoodSelect m={{props.state.mood}} tabindex={{tabnext()}} /></div>
+                              </div>
+                          );
+                      }}
+          			return (''')
               for slot in ('uma1', 'uma2', 'debufUma'):
                   anchor = f'state={{O.{slot}}} aptitudesMode="simulation" course={{course}}'
                   app = replace_once(app, anchor, anchor + ' compareSummary={true}')
@@ -410,7 +441,7 @@ jobs:
                 costs.set(id, negative(id) ? base : runningCost);
               }
             }
-
+          
             function total(ids) {
               const byGroup = new Map();
               for (const id of ids) {
@@ -420,13 +451,13 @@ jobs:
               }
               return [...byGroup.values()].reduce((sum, cost) => sum + cost, 0);
             }
-
+          
             function summary(ids) {
               const selected = [...ids];
               const partial = selected.some(id => !Object.hasOwn(skills, id));
               return `${total(selected).toLocaleString('en-US')}${partial ? '+' : ''}`;
             }
-
+          
             function rating(build, scoreUma, course) {
               const aptitudes = [...(build.aptitudes ?? ['S', 'S', 'S', 'S', 'A', 'A', 'A', 'A', 'A', 'A'])];
               if (course) {
@@ -438,17 +469,23 @@ jobs:
               }
               return scoreUma({...build, aptitudes});
             }
-
+          
             function formatRating(value) {
               return Number.isFinite(value) ? value.toLocaleString('en-US') : 'Unavailable';
             }
-
+          
+            function rankIndex(value, thresholds) {
+              if (!Number.isFinite(value) || value < 0) return null;
+              const index = thresholds.findIndex(threshold => threshold > value);
+              return index >= 0 ? index : null;
+            }
+          
             function filename(name, value) {
               const slug = (name ?? '').normalize('NFKD').replace(/\p{Mark}/gu, '').toLowerCase()
                 .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
               return `${slug || 'uma'}_${Number.isFinite(value) ? value : 'rating_unavailable'}.json`;
             }
-
+          
             function parse(text) {
               const source = JSON.parse(text.replace(/^\uFEFF/, ''));
               if (!source || typeof source !== 'object' || !Array.isArray(source.skills) ||
@@ -490,7 +527,7 @@ jobs:
               build.samplePolicies = Object.fromEntries(policies);
               return build;
             }
-
+          
             function stringify(build) {
               const {aptitudes, ...exportedBuild} = build;
               const forcedSkillPositions = Object.fromEntries(Object.entries(build.samplePolicies ?? {})
@@ -498,7 +535,7 @@ jobs:
                 .map(([id, sample]) => [id, sample.pos]));
               return JSON.stringify({...exportedBuild, forcedSkillPositions}, null, 2) + '\n';
             }
-
+          
             function importFile(apply) {
               const input = document.createElement('input');
               input.type = 'file';
@@ -515,7 +552,7 @@ jobs:
               }, {once: true});
               input.click();
             }
-
+          
             function exportFile(build, name, value) {
               const url = URL.createObjectURL(new Blob([stringify(build)], {type: 'application/json'}));
               const link = document.createElement('a');
@@ -524,19 +561,19 @@ jobs:
               link.click();
               setTimeout(() => URL.revokeObjectURL(url), 1000);
             }
-
+          
             const draftKey = 'umalator-global-sp:session:v1';
             const draftFields = [
               'courseId', 'racedef', 'nsamples', 'seed', 'usePosKeep', 'useCompeteTop',
               'useIntChecks', 'useShowHp', 'displayedRun', 'chartMode', 'chartSkills',
             ];
             const draftRunners = ['uma1', 'uma2', 'debufUma'];
-
+          
             function draftFieldsFrom(state) {
               return Object.fromEntries(draftFields.filter(key => Object.hasOwn(state, key))
                 .map(key => [key, state[key]]));
             }
-
+          
             function restoreDraft(deserialize) {
               try {
                 const saved = JSON.parse(window.localStorage.getItem(draftKey));
@@ -549,7 +586,7 @@ jobs:
                 return {};
               }
             }
-
+          
             function watchDraft(state, serialize, hash, loadHash) {
               let loading = false;
               let generation = 0;
@@ -599,8 +636,8 @@ jobs:
                 window.removeEventListener('hashchange', onHashChange);
               };
             }
-
-            globalThis.UmaFork = Object.freeze({total, summary, rating, formatRating, filename, parse, stringify, importFile, exportFile, restoreDraft, watchDraft});
+          
+            globalThis.UmaFork = Object.freeze({total, summary, rating, formatRating, rankIndex, filename, parse, stringify, importFile, exportFile, restoreDraft, watchDraft});
           })();
           UMA_FORK_FILE
           cat > scripts/smoke.test.mjs <<'UMA_FORK_FILE'
@@ -649,9 +686,39 @@ jobs:
             assert.deepEqual(Array.from(rated.aptitudes), ['B', 'S', 'B', 'B', 'B', 'A', 'B', 'B', 'A', 'B']);
             assert.deepEqual(build.aptitudes, Array(10).fill('B'));
             assert.equal(io.formatRating(score), '22,765');
+            assert.equal(io.rankIndex(299, [300, 600, Infinity]), 0);
+            assert.equal(io.rankIndex(300, [300, 600, Infinity]), 1);
+            assert.equal(io.rankIndex(NaN, [300, Infinity]), null);
+            assert.equal(io.rankIndex(-1, [300, Infinity]), null);
             assert.equal(io.filename('Taiki Shuttle', score), 'taiki_shuttle_22765.json');
             assert.equal(io.filename('T.M. Opera O', score), 't_m_opera_o_22765.json');
             assert.equal(io.filename('', score), 'uma_22765.json');
+          });
+          
+          test('compact editor preserves the four aptitude controls, then live rank, SP, rating and race context', () => {
+            const bundle = read('bundle.js');
+            const start = bundle.indexOf('class:"horseAptitudes fork-compact-aptitudes"');
+            const end = bundle.indexOf('class:"horseAptitudes"', start);
+            assert.ok(start >= 0 && end > start);
+            const compact = bundle.slice(start, end);
+            const ordered = ['fork-surface','fork-distance','fork-strategy','fork-style','fork-live-rank','fork-sp-summary','fork-rating-summary','fork-race-context','state.popularity','state.mood'];
+            let previous = -1;
+            for (const marker of ordered) {
+              const next = compact.indexOf(marker);
+              assert.ok(next > previous, marker);
+              previous = next;
+            }
+            const rankVariable = compact.match(/UmaFork\.rankIndex\(forkRating,(\w+)\)/)?.[1];
+            assert.ok(rankVariable);
+            const literal = bundle.match(new RegExp(`\\b${rankVariable}=Object\\.freeze\\((\\[[^\\]]+\\])\\)`))?.[1];
+            assert.ok(literal);
+            const thresholds = runInNewContext(literal);
+            assert.equal(io.rankIndex(27153, thresholds), 34);
+            assert.equal(io.rankIndex(27299, thresholds), 34);
+            assert.equal(io.rankIndex(27300, thresholds), 35);
+            assert.match(compact, /icons\/rank\/utx_txt_rank_\$\{globalThis\.UmaFork\.rankIndex\(forkRating,\w+\)\}\.png/);
+            assert.match(read('bundle.css'), /grid-template-areas:"surface distance rank" "strategy style rank" "sp rating context"/);
+            assert.match(bundle, /horseSkillHeader fork-compact-skills-title/);
           });
           
           test('all original modes load the integrated bundle and the engine worker is present', () => {
