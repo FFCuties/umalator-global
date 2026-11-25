@@ -110,13 +110,13 @@ test('rating uses the current comparison aptitudes without modifying the saved b
   assert.equal(io.filename('', score), 'uma_22765.json');
 });
 
-test('compact editor preserves the four aptitude controls, then live rank, SP, rating and race context', () => {
+test('compact editor preserves aptitude controls and centers mood beneath live rank without popularity controls', () => {
   const bundle = read('bundle.js');
   const start = bundle.indexOf('class:"horseAptitudes fork-compact-aptitudes"');
   const end = bundle.indexOf('class:"horseAptitudes"', start);
   assert.ok(start >= 0 && end > start);
   const compact = bundle.slice(start, end);
-  const ordered = ['fork-surface','fork-distance','fork-strategy','fork-style','fork-live-rank','fork-sp-summary','fork-rating-summary','fork-race-context','state.popularity','state.mood'];
+  const ordered = ['fork-surface','fork-distance','fork-strategy','fork-style','fork-live-rank','fork-sp-summary','fork-rating-summary','fork-race-context','state.mood'];
   let previous = -1;
   for (const marker of ordered) {
     const next = compact.indexOf(marker);
@@ -132,7 +132,10 @@ test('compact editor preserves the four aptitude controls, then live rank, SP, r
   assert.equal(io.rankIndex(27299, thresholds), 34);
   assert.equal(io.rankIndex(27300, thresholds), 35);
   assert.match(compact, /icons\/rank\/utx_txt_rank_\$\{globalThis\.UmaFork\.rankIndex\(forkRating,\w+\)\}\.png/);
+  assert.doesNotMatch(bundle, /state\.popularity,tabindex:/);
+  assert.match(bundle, /class:"fork-legacy-mood"/);
   assert.match(read('bundle.css'), /grid-template-areas:"surface distance rank" "strategy style rank" "sp rating context"/);
+  assert.match(read('bundle.css'), /fork-race-context\{grid-area:context;align-self:stretch;align-items:center;justify-content:center/);
   assert.match(bundle, /horseSkillHeader fork-compact-skills-title/);
 });
 

@@ -14,18 +14,18 @@ BASE_PATH = 'new URL(".",document.baseURI).pathname.replace(/\\/$/,"")'
 POINTER = 'globalThis.UmaFork'
 ROUTES = ('index.html', 'compare/index.html', 'skills/index.html', 'stamina/index.html')
 SUMMARY_CSS = '''
-.horseAptitudes.fork-compact-aptitudes{grid-template-columns:repeat(2,minmax(0,1fr)) minmax(0,.68fr);grid-template-areas:"surface distance rank" "strategy style rank" "sp rating context";gap:8px 12px;margin:0 16px}
+.horseAptitudes.fork-compact-aptitudes{grid-template-columns:repeat(2,minmax(0,1fr)) minmax(0,.60fr);grid-template-areas:"surface distance rank" "strategy style rank" "sp rating context";gap:8px 12px;margin:0 16px}
 .horseAptitudes.fork-compact-aptitudes>.fork-aptitude{background:white;border:2px solid #e0d6cc;justify-content:initial;min-width:0}
 .fork-surface{grid-area:surface}.fork-distance{grid-area:distance}.fork-strategy{grid-area:strategy}.fork-style{grid-area:style}
 .horseAptitudes.fork-compact-aptitudes>.fork-live-rank{grid-area:rank;align-self:stretch;position:relative;align-items:center;justify-content:center;background:none;border:0;padding:0;height:auto;min-height:0}
-.fork-live-rank>img{position:absolute;inset:0;margin:auto;max-width:100%;height:100%;max-height:5.2em;object-fit:contain;width:auto}
+.fork-live-rank>img{position:absolute;inset:0;margin:auto;max-width:calc(100% - 8px);height:calc(100% - 2px);max-height:5.4em;object-fit:contain;width:auto}
 .fork-compact-aptitudes>output{background:linear-gradient(#a8e305,#61ae16) padding-box,linear-gradient(#addb3c,#558f18) border-box;border:2px solid transparent;border-radius:36px;box-shadow:0 3px #b4b2c0;color:#fff;padding:.28em .2em;text-align:center;font-weight:700;font-size:1em;line-height:1.3;min-width:0;white-space:nowrap}
 .fork-sp-summary{grid-area:sp}.fork-rating-summary{grid-area:rating}
-.horseAptitudes.fork-compact-aptitudes>.fork-race-context{grid-area:context;justify-content:center;flex-wrap:wrap;gap:3px;background:none;border:0;padding:0;height:auto;font-size:.88em;min-width:0}
-.horseAptitudes.fork-compact-aptitudes>.fork-race-context>input{width:calc(2ch + 12px);font-size:1em;margin:0;text-align:center}
-.fork-race-context>img{height:1.5em;width:auto;max-width:48%;object-fit:contain;cursor:pointer}
+.horseAptitudes.fork-compact-aptitudes>.fork-race-context{grid-area:context;align-self:stretch;align-items:center;justify-content:center;background:none;border:0;padding:0;height:auto;font-size:1em;min-width:0}
+.horseAptitudes>div.fork-legacy-mood{grid-column:3;grid-row:1/span 2;align-self:stretch;justify-content:center;background:none;border:0;padding:0;height:auto}
+.fork-race-context>img,.horseAptitudes>div.fork-legacy-mood>img{height:1.75em;width:auto;max-width:90%;object-fit:contain;cursor:pointer}
 .horseSkillHeader.fork-compact-skills-title{margin:8px auto 12px;width:calc(100% - 32px)}
-@media (orientation:portrait){.horseAptitudes.fork-compact-aptitudes{gap:8px 8px;margin:0 12px}.fork-compact-aptitudes>output{font-size:.88em}.horseAptitudes.fork-compact-aptitudes>.fork-race-context{font-size:.77em}}
+@media (orientation:portrait){.horseAptitudes.fork-compact-aptitudes{gap:8px 8px;margin:0 12px}.fork-compact-aptitudes>output{font-size:.88em}.fork-race-context>img,.horseAptitudes>div.fork-legacy-mood>img{height:1.6em}}
 '''
 
 DARK_MODE_CSS = '''
@@ -234,7 +234,7 @@ def integrate_rating_bundle(bundle):
     mood = rf'{h}\("div",null,({h}\(\w+,\{{m:{props}\.state\.mood,tabindex:\w+\(\)\}}\))\)'
     popularity = rf'{h}\("div",null,({h}\(\w+,\{{p:{props}\.state\.popularity,tabindex:\w+\(\)\}}\))\)'
     apt = match_once(bundle, rf'case"simulation":return {h}\("div",\{{class:"horseAptitudes"\}},({control}),({control}),{mood},({control}),({control}),{popularity}\);case"full":')
-    surface, distance, mood_ui, strategy, style, popularity_ui = apt.groups()
+    surface, distance, mood_ui, strategy, style, _popularity_ui = apt.groups()
     controls = [item.replace(f'{h}("div",null,', f'{h}("div",{{class:"fork-aptitude fork-{area}"}},', 1)
                 for item, area in zip((surface, distance, strategy, style), ('surface', 'distance', 'strategy', 'style'))]
     rank = f'{POINTER}.rankIndex(forkRating,{rank_thresholds})'
@@ -242,9 +242,11 @@ def integrate_rating_bundle(bundle):
                   f'{h}("img",{{src:`{ASSETS}icons/rank/utx_txt_rank_${{{rank}}}.png`,alt:"Live rank",title:"Rank for "+{POINTER}.formatRating(forkRating)}}))')
     sp = f'{h}("output",{{class:"fork-sp-summary",title:"Total base skill points including prerequisites"}},"SP : "+{POINTER}.summary(forkBuild.skills.values()))'
     rating = f'{h}("output",{{class:"fork-rating-summary"}},"Rating : "+{POINTER}.formatRating(forkRating))'
-    context = f'{h}("div",{{class:"fork-race-context"}},{popularity_ui},{mood_ui})'
+    context = f'{h}("div",{{class:"fork-race-context"}},{mood_ui})'
     compact = f'{h}("div",{{class:"horseAptitudes fork-compact-aptitudes"}},'+','.join([*controls,rank_badge,sp,rating,context])+')'
-    bundle = replace_once(bundle, apt[0], apt[0].replace('case"simulation":return ', f'case"simulation":return {props}.compareSummary?{compact}:', 1))
+    fallback_mood = f'{h}("div",{{class:"fork-legacy-mood"}},{mood_ui})'
+    fallback = f'{h}("div",{{class:"horseAptitudes"}},'+','.join([surface,distance,fallback_mood,strategy,style])+')'
+    bundle = replace_once(bundle, apt[0], f'case"simulation":return {props}.compareSummary?{compact}:{fallback};case"full":')
     bundle = replace_once(bundle, header[0],
         f'{h}("div",{{class:{props}.compareSummary?"horseSkillHeader fork-compact-skills-title":"horseSkillHeader"}},'
         f'{props}.compareSummary?{title}:[{title},{old_sp[:-1]}+" SP")])')
@@ -292,11 +294,14 @@ def readable_rating_changes(horse, app):
                         <div class="fork-live-rank">{{rank === null ? <span>—</span> : <img src={{`/uma-tools/icons/rank/utx_txt_rank_${{rank}}.png`}} alt="Live rank" title={{"Rank for " + {POINTER}.formatRating(rating)}} />}}</div>
                         <output class="fork-sp-summary" title="Total base skill points including prerequisites">SP : {{{POINTER}.summary(build.skills.values())}}</output>
                         <output class="fork-rating-summary">Rating : {{{POINTER}.formatRating(rating)}}</output>
-                        <div class="fork-race-context"><PopularitySelect p={{props.state.popularity}} tabindex={{tabnext()}} /><MoodSelect m={{props.state.mood}} tabindex={{tabnext()}} /></div>
+                        <div class="fork-race-context"><MoodSelect m={{props.state.mood}} tabindex={{tabnext()}} /></div>
                     </div>
                 );
             }}
 			return (''')
+    horse = replace_once(horse, '<div><MoodSelect m={props.state.mood} tabindex={tabnext()} /></div>',
+                         '<div class="fork-legacy-mood"><MoodSelect m={props.state.mood} tabindex={tabnext()} /></div>')
+    horse = replace_once(horse, '<div><PopularitySelect p={props.state.popularity} tabindex={tabnext()} /></div>', '')
     for slot in ('uma1', 'uma2', 'debufUma'):
         anchor = f'state={{O.{slot}}} aptitudesMode="simulation" course={{course}}'
         app = replace_once(app, anchor, anchor + ' compareSummary={true}')
