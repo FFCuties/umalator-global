@@ -160,6 +160,18 @@ test('all original modes load the integrated bundle and the engine worker is pre
   assert.match(read('simulator.worker.js'), /postMessage/);
 });
 
+test('source attribution is available in the collapsed sidebar About / Source section, not the page footer', () => {
+  const bundle = read('bundle.js');
+  assert.match(bundle, /\w+\("details",\{class:"fork-about"\},\w+\("summary",null,"About \/ Source"\)/);
+  assert.ok(bundle.includes(`https://github.com/alpha123/uma-tools/tree/${realm.UmaForkData.revision}`));
+  assert.match(bundle, /href:"source-changes\/"\},"Source changes"/);
+  assert.match(bundle, /href:"LICENSE"\},"GPL-3.0"/);
+  for (const route of ['index.html', 'compare/index.html', 'skills/index.html', 'stamina/index.html']) {
+    assert.doesNotMatch(read(route), /Alpha123 Global fork/);
+  }
+  assert.ok(read('LICENSE').includes('GNU GENERAL PUBLIC LICENSE'));
+});
+
 test('upcoming English-named skills are available for import, scoring and simulation', () => {
   const bundle = read('bundle.js');
   const worker = read('simulator.worker.js');

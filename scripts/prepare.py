@@ -25,6 +25,10 @@ SUMMARY_CSS = '''
 .horseAptitudes>div.fork-legacy-mood{grid-column:3;grid-row:1/span 2;align-self:stretch;justify-content:center;background:none;border:0;padding:0;height:auto}
 .fork-race-context>img,.horseAptitudes>div.fork-legacy-mood>img{height:1.75em;width:auto;max-width:90%;object-fit:contain;cursor:pointer}
 .horseSkillHeader.fork-compact-skills-title{margin:8px auto 12px;width:calc(100% - 32px)}
+#sidebar>.fork-about{font-size:.8em;line-height:1.5;margin:12px 0 4px;color:#50606a;max-width:170px}
+.fork-about>summary{cursor:pointer;width:fit-content}
+.fork-about-links{display:flex;flex-direction:column;gap:3px;margin-top:5px;padding-left:12px}
+html[data-fork-theme="dark"] #sidebar>.fork-about{color:var(--fork-muted)}
 @media (orientation:portrait){.horseAptitudes.fork-compact-aptitudes{gap:8px 8px;margin:0 12px}.fork-compact-aptitudes>output{font-size:.88em}.fork-race-context>img,.horseAptitudes>div.fork-legacy-mood>img{height:1.6em}}
 '''
 
@@ -194,6 +198,17 @@ def localize(text):
             .replace('../vendor/opencv.js', ASSETS + 'vendor/opencv.js'))
 
 
+def integrate_about(bundle, sha):
+    last = match_once(bundle, r'(\w+)\("div",\{id:"extendedOptionsRow"\},\1\("div",null,\1\("label",\{for:"stacalcForceMaxSpurt"\},"Force full spurt"\),\1\("input",\{type:"checkbox",id:"stacalcForceMaxSpurt",checked:\w+,onClick:\w+\}\)\)\)')
+    h = last[1]
+    about = (f'{h}("details",{{class:"fork-about"}},{h}("summary",null,"About / Source"),'
+             f'{h}("div",{{class:"fork-about-links"}},{h}("span",null,"Alpha123 Global fork"),'
+             f'{h}("a",{{href:"https://github.com/alpha123/uma-tools/tree/{sha}"}},"Upstream {sha[:7]}"),'
+             f'{h}("a",{{href:"source-changes/"}},"Source changes"),'
+             f'{h}("a",{{href:"LICENSE"}},"GPL-3.0")))')
+    return replace_once(bundle, last[0], last[0] + ',' + about)
+
+
 def integrate_autosave(bundle):
     serializers = match_once(bundle, rf'{re.escape(POINTER)}\.exportFile\((\w+)\(build\),')
     loader = match_once(bundle,
@@ -308,7 +323,7 @@ def readable_rating_changes(horse, app):
     return horse, app
 
 
-def readable_changes(read, destination):
+def readable_changes(read, destination, sha):
     horse = read('components/HorseDef.tsx').decode()
     horse = replace_once(horse, 'JSON.stringify(serializeUma(uma_GetCurrent()))',
                          f'{POINTER}.stringify(serializeUma(uma_GetCurrent()))')
@@ -334,6 +349,17 @@ def readable_changes(read, destination):
                             <label for="fork-dark-mode">Dark mode</label>
                             <input type="checkbox" id="fork-dark-mode" defaultChecked={{{POINTER}.darkMode()}} onChange={{e => {POINTER}.setDarkMode(e.currentTarget.checked)}} />
                         </div>''')
+    last = match_once(app, r'<input type="checkbox" id="stacalcForceMaxSpurt"[^>]+/>\s*</div>\s*</div>\s*\}')
+    app = replace_once(app, last[0], last[0] + f'''
+                        <details class="fork-about">
+                            <summary>About / Source</summary>
+                            <div class="fork-about-links">
+                                <span>Alpha123 Global fork</span>
+                                <a href="https://github.com/alpha123/uma-tools/tree/{sha}">Upstream {sha[:7]}</a>
+                                <a href="source-changes/">Source changes</a>
+                                <a href="LICENSE">GPL-3.0</a>
+                            </div>
+                        </details>''')
     for name, content in [('components/HorseDef.tsx', horse), ('umalator/app.tsx', app)]:
         target = destination / name
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -428,7 +454,7 @@ def prepare(read, sha, dest, files):
     base = 'umalator-global/'
     meta = json.loads(read(base + 'skill_meta.json'))
     skills = json.loads(read(base + 'skill_data.json'))
-    bundle = integrate_autosave(integrate_rating_bundle(integrate_bundle(read(base + 'bundle.js').decode())))
+    bundle = integrate_about(integrate_autosave(integrate_rating_bundle(integrate_bundle(read(base + 'bundle.js').decode()))), sha)
     worker = read(base + 'simulator.worker.js').decode()
     bundle, worker, skills, meta, upcoming, excluded = add_upcoming_skills(read, bundle, worker, skills, meta)
     catalog = {'revision': sha, 'upcomingSkills': upcoming, 'excludedUpcomingSkills': excluded, 'skills': {
@@ -449,7 +475,7 @@ def prepare(read, sha, dest, files):
     shutil.copyfile(files / 'overlay/build-io.js', dest / 'build-io.js')
     io_version = sha256((dest / 'build-io.js').read_bytes()).hexdigest()[:12]
     (dest / 'LICENSE').write_bytes(read('LICENSE'))
-    readable_changes(read, dest / 'source-changes')
+    readable_changes(read, dest / 'source-changes', sha)
     for route in ROUTES:
         html = read(base + route).decode()
         html = replace_once(html, 'href="bundle.css"', f'href="bundle.css?v={css_version}"')
@@ -457,10 +483,6 @@ def prepare(read, sha, dest, files):
                             '<script src="skill-catalog.js"></script>\n'
                             f'\t\t<script src="build-io.js?v={io_version}"></script>\n'
                             f'\t\t<script src="bundle.js?v={bundle_version}"></script>')
-        html = replace_once(html, '</body>',
-                            f'<div style="margin:.6rem;font-size:.82rem">Alpha123 Global fork · '
-                            f'<a href="https://github.com/alpha123/uma-tools/tree/{sha}">Upstream {sha[:7]}</a> · '
-                            '<a href="source-changes/">Source changes</a> · <a href="LICENSE">GPL-3.0</a></div>\n\t</body>')
         target = dest / route
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(html, encoding='utf-8')
