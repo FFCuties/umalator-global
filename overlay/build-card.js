@@ -34,7 +34,11 @@
     const ids = Array.isArray(build.skills) ? build.skills.map(String) : [...build.skills.values()].map(String);
     const course = options.course;
     const style=STYLES[build.strategy] || build.strategy || 'Unassigned';
-    const aptitudes = [...(build.aptitudes ?? Array(10).fill('-'))];
+    // Base outfit grades are authoritative; an imported build may carry unrelated old grades.
+    const defaults=options.defaultAptitudes;
+    const aptitudes=Array.isArray(defaults) && defaults.length===10
+      ? defaults.map(grade=>typeof grade==='number'?(' GFEDCBA'[grade] || '-'):grade)
+      : [...(build.aptitudes ?? Array(10).fill('-'))];
     const distanceIndex=course?.distanceType-1, surfaceIndex=course?.surface-1;
     const styleIndex=['Nige','Senkou','Sasi','Oikomi'].indexOf(build.strategy==='Oonige'?'Nige':build.strategy);
     if(distanceIndex>=0 && distanceIndex<4) aptitudes[distanceIndex]=build.distanceAptitude;

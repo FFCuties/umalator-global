@@ -295,6 +295,7 @@ def integrate_rating_bundle(bundle):
     export_card = (f'{h}("button",{{class:"circleBtn btnType2",title:"Export character image","aria-label":"Export character image",onClick:e=>{{'
                    f'const build={current}(),info={catalog}[build.outfitId.slice(0,4)],rating={POINTER}.rating(build,{calculate},{course});'
                    f'globalThis.UmaForkCard.exportCharacterCard(build,{{name:info?.name[1],epithet:info?.outfits[build.outfitId]?.epithet,'
+                   f'defaultAptitudes:info?.outfits[build.outfitId]?.aptitudes,'
                    f'portrait:e.currentTarget.closest(".horseDef")?.querySelector(".umaSelectorIconsBox>div>img")?.src,'
                    f'rating,rank:{POINTER}.rankIndex(rating,{rank_thresholds}),course:{course}}});}}}},"\\u{{1F4F7}}\\uFE0E")')
     bundle = replace_once(bundle, camera[0], export_card)
@@ -325,6 +326,7 @@ def readable_rating_changes(horse, app):
                                 const rating = {POINTER}.rating(current, scoreUma, props.course);
                                 globalThis.UmaForkCard.exportCharacterCard(current, {{
                                     name: info?.name[1], epithet: info?.outfits[current.outfitId]?.epithet,
+                                    defaultAptitudes: info?.outfits[current.outfitId]?.aptitudes,
                                     portrait: e.currentTarget.closest(".horseDef")?.querySelector(".umaSelectorIconsBox>div>img")?.src,
                                     rating, rank: {POINTER}.rankIndex(rating, RankThresholds), course: props.course
                                 }});

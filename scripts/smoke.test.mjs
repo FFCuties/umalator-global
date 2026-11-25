@@ -177,8 +177,8 @@ test('all original modes load the integrated bundle and the engine worker is pre
 test('camera exports the current planned character to a complete, scalable card', () => {
   const card = realm.UmaForkCard;
   const selected = [white, lower];
-  const build = {...kachi, starCount:5, uniqueLv:3, outfitId:'100101', skills:selected, mood:2};
-  const data = card.createCardData(build, {name:'Special Week', epithet:'[Special Dreamer]', rating:27153, rank:34, course:{surface:2,distance:1600,distanceType:2}});
+  const build = {...kachi, starCount:5, uniqueLv:3, outfitId:'100101', skills:selected, mood:2, aptitudes:Array(10).fill('S')};
+  const data = card.createCardData(build, {name:'Special Week', epithet:'[Special Dreamer]', rating:27153, rank:34, defaultAptitudes:[2,5,7,7,1,7,7,5,7,1], course:{surface:2,distance:1600,distanceType:2}});
   assert.equal(data.name, 'Special Week');
   assert.equal(data.stars, 5);
   assert.equal(data.filename, 'special_week_27153.png');
@@ -187,6 +187,10 @@ test('camera exports the current planned character to a complete, scalable card'
   assert.equal(data.groups[0].entries[1].grade, build.surfaceAptitude);
   assert.equal(data.groups[1].entries[1].grade, build.distanceAptitude);
   assert.equal(data.groups[2].entries[1].grade, build.strategyAptitude);
+  assert.deepEqual(Array.from(data.groups[0].entries, a=>a.grade), ['A','A']);
+  assert.deepEqual(Array.from(data.groups[1].entries, a=>a.grade), ['F','S','A','A']);
+  assert.deepEqual(Array.from(data.groups[2].entries, a=>a.grade), ['G','A','A','C']);
+  assert.deepEqual(build.aptitudes, Array(10).fill('S'));
   assert.deepEqual(Array.from(data.groups, g=>g.label), ['Track','Distance','Style']);
   assert.deepEqual(Array.from(data.groups, g=>g.entries.length), [2,4,4]);
   assert.ok(data.stats.every(s=>s.icon.includes('/statusrank/')));
@@ -202,6 +206,7 @@ test('camera exports the current planned character to a complete, scalable card'
   assert.ok(data.skills.every(skill => text.includes(skill.name)));
   assert.ok(card.cardHeight({...data,skills:Array.from({length:30},()=>data.skills[0])})>canvas.height);
   assert.match(read('bundle.js'), /title:"Export character image"[\s\S]{0,520}UmaForkCard\.exportCharacterCard\(build,/);
+  assert.match(read('bundle.js'), /defaultAptitudes:info\?\.outfits\[build\.outfitId\]\?\.aptitudes/);
   assert.match(read('bundle.js'), /Read from screenshot \(OCR\)/);
 });
 
