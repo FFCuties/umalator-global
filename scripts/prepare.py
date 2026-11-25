@@ -28,6 +28,39 @@ SUMMARY_CSS = '''
 @media (orientation:portrait){.horseAptitudes.fork-compact-aptitudes{gap:8px 8px;margin:0 12px}.fork-compact-aptitudes>output{font-size:.88em}.horseAptitudes.fork-compact-aptitudes>.fork-race-context{font-size:.77em}}
 '''
 
+DARK_MODE_CSS = '''
+#sidebar>.fork-dark-mode-row{margin-bottom:6px}
+html[data-fork-theme="dark"]{color-scheme:dark;--fork-bg:#14191e;--fork-panel:#20282f;--fork-control:#29343d;--fork-border:#485962;--fork-text:#edf2f5;--uma1-color:#72b5ff;--uma2-color:#ff8989;background:var(--fork-bg);color:var(--fork-text)}
+html[data-fork-theme="dark"] body{background:var(--fork-bg);color:var(--fork-text)}
+html[data-fork-theme="dark"] a{color:#9acbff}
+html[data-fork-theme="dark"] :is(.horseDef,#nonUmaPanes,#umaOverlay){background:var(--fork-panel);border-color:#496b49;color:var(--fork-text)}
+html[data-fork-theme="dark"] :is(.horseSkillListWrapper,#resultsPaneWrapper){background:#192126}
+html[data-fork-theme="dark"] :is(.horseParams,.horseFullAptitudes>div,.horseAptitudes>div,.horseAptitudes.fork-compact-aptitudes>.fork-aptitude,.addSkillButton,.horseAptitudeSelect>ul,.umaSuggestion,.umaScore,.trackSelect>select,.presetSelect>select,.splitBtn>div>ul,.savedHorseTableWrapper,.basinnChartWrapper,.basinnChartPopover,#infoTables>table,#infoTables caption,#resultsSummary>tbody td){background:var(--fork-control);border-color:var(--fork-border);color:var(--fork-text)}
+html[data-fork-theme="dark"] :is(.horseSkillPickerWrapper,.skillListButtonsRow){background:var(--fork-panel);color:var(--fork-text)}
+html[data-fork-theme="dark"] :is(.horseAptitudes.fork-compact-aptitudes>.fork-live-rank,.horseAptitudes.fork-compact-aptitudes>.fork-race-context){background:transparent;border:0;color:var(--fork-text)}
+html[data-fork-theme="dark"] :is(.umaEpithet>span,.umaSelectInput,.horseParam>input,.horseAptitudes>div:last-child>input,.ocrUpload,.groundSelect,.stacalcPane,.reqStamCalc>input,.savedHorseTable,.basinnChart,#resultsHelp,#resultsSummary>tfoot th,#infoTables>table th,#swapUmas){color:var(--fork-text)}
+html[data-fork-theme="dark"] :is(.racetrackName){color:var(--fork-text);-webkit-text-stroke:0;text-shadow:none}
+html[data-fork-theme="dark"] :is(.umaTab:not(.selected),.modeBtn:not(.modeBtnActive),.btnType2,.splitBtn.btnType2>div,.savedHorseTable th,.basinnChart th,#copyUmaButtons>div){background:linear-gradient(#35434d,#28343b);color:var(--fork-text);border-color:var(--fork-border);outline-color:var(--fork-border)}
+html[data-fork-theme="dark"] :is(.horseDefHeader,.umaTab.selected,.modeBtn.modeBtnActive,.btnType1,.splitBtn.btnType1>div,.horseSkillHeader,.fork-compact-aptitudes>output,#expandBtn,.horseParamHeader){background:linear-gradient(#558d25,#365d1c);color:#fff;border-color:#659944;box-shadow:none}
+html[data-fork-theme="dark"] :is(.umaSuggestion:nth-child(2n),.presetSelect>legend){background:#35434d;color:var(--fork-text)}
+html[data-fork-theme="dark"] :is(.umaSuggestion.selected,.umaSuggestion:hover,.horseAptitudeSelect li:hover){background:#265f93;color:#fff}
+html[data-fork-theme="dark"] :is(.savedHorseTable>tbody>tr.selected,.basinnChart tr.selected){background:#41652e;color:#fff}
+html[data-fork-theme="dark"] .presetSelect>legend:after{border-top-color:#35434d}
+html[data-fork-theme="dark"] input:is([type=checkbox],[type=radio]){accent-color:#82b94f}
+html[data-fork-theme="dark"] :is(.skill-white,.skill-gold,.skill-pink,.skill-unique){color:var(--fork-text)}
+html[data-fork-theme="dark"] .skill-white{background:linear-gradient(90deg,#35434d,#26323c) padding-box,linear-gradient(90deg,#667984,#4d616b) border-box}
+html[data-fork-theme="dark"] .skill-gold{background:linear-gradient(90deg,#6b5020,#483715) padding-box,linear-gradient(90deg,#d3ad48,#987322) border-box}
+html[data-fork-theme="dark"] .skill-pink{background:linear-gradient(90deg,#67364f,#48273d) padding-box,linear-gradient(90deg,#d17ca8,#9c567e) border-box}
+html[data-fork-theme="dark"] .skill-unique{background:linear-gradient(90deg,#365d48,#374b69,#5b3c66) padding-box,linear-gradient(90deg,#74a793,#8fa6d4,#bc84c1) border-box}
+html[data-fork-theme="dark"] :is(.skillName,.skillLv>label,.skillLv>input,.skillDismiss,.skillDetails,.skillActivationEditor>select,.skillActivationParams>input[type=number]){color:var(--fork-text);-webkit-text-stroke:0;text-shadow:none}
+html[data-fork-theme="dark"] .filterButton{background:#35434d;color:var(--fork-text);-webkit-text-stroke:0;box-shadow:none}
+html[data-fork-theme="dark"] .filterButton.active{background:#41652e;color:#fff}
+html[data-fork-theme="dark"] #midPane svg text:not([fill]):not(.sectionText):not(.distanceMarker):not(.slopePer):not(.mouseoverText){fill:#dbe4e9}
+html[data-fork-theme="dark"] #midPane svg [stroke="black"],html[data-fork-theme="dark"] #midPane svg [stroke="#000"]{stroke:#9aabb2}
+html[data-fork-theme="dark"] #rtMouseOverBox>text{stroke:#192126}
+@media(orientation:portrait){#sidebar>.fork-dark-mode-row{flex-basis:100%;margin-bottom:6px}#sidebar>#run{margin-top:20px}}
+'''
+
 
 def replace_once(text, anchor, replacement):
     if text.count(anchor) != 1:
@@ -74,6 +107,11 @@ def integrate_bundle(bundle):
     bundle = replace_once(bundle, '("/uma-tools/umalator-global",', '(' + BASE_PATH + ',')
     telemetry = match_once(bundle, r'\b(\w+)\(\);try\{window\.parent&&window\.parent\.location\.hostname')
     bundle = replace_once(bundle, telemetry[0], 'try{window.parent&&window.parent.location.hostname')
+    hp = match_once(bundle, r'(\w+)\("div",null,\1\("label",\{for:"showhp"\},\1\(\w+,\{id:"ui\.sidebar\.showhp"\}\)\),\1\("input",\{type:"checkbox",id:"showhp",checked:\w+,onClick:\w+\}\)\)')
+    h = hp[1]
+    dark = (f'{h}("div",{{class:"fork-dark-mode-row"}},{h}("label",{{for:"fork-dark-mode"}},"Dark mode"),'
+            f'{h}("input",{{type:"checkbox",id:"fork-dark-mode",defaultChecked:{POINTER}.darkMode(),onChange:e=>{POINTER}.setDarkMode(e.currentTarget.checked)}}))')
+    bundle = replace_once(bundle, hp[0], hp[0] + ',' + dark)
     return localize(bundle)
 
 
@@ -214,6 +252,12 @@ def readable_changes(read, destination):
     app = replace_once(app, 'initTelemetry();', '// The fork does not initialize upstream analytics.')
     horse, app = readable_rating_changes(horse, app)
     app = readable_autosave(app)
+    hp = match_once(app, r'<div>\s*<label for="showhp">[\s\S]*?<input type="checkbox" id="showhp"[^>]+/>\s*</div>')
+    app = replace_once(app, hp[0], hp[0] + f'''
+                        <div class="fork-dark-mode-row">
+                            <label for="fork-dark-mode">Dark mode</label>
+                            <input type="checkbox" id="fork-dark-mode" defaultChecked={{{POINTER}.darkMode()}} onChange={{e => {POINTER}.setDarkMode(e.currentTarget.checked)}} />
+                        </div>''')
     for name, content in [('components/HorseDef.tsx', horse), ('umalator/app.tsx', app)]:
         target = destination / name
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -322,7 +366,7 @@ def prepare(read, sha, dest, files):
     bundle_version = sha256(bundle.encode('utf-8')).hexdigest()[:12]
     (dest / 'simulator.worker.js').write_text(worker, encoding='utf-8')
     css = (localize(read(base + 'bundle.css').decode()) +
-           '\n.fork-sp{margin-inline-start:.65em;white-space:nowrap;font-weight:600}\n' + SUMMARY_CSS).encode('utf-8')
+           '\n.fork-sp{margin-inline-start:.65em;white-space:nowrap;font-weight:600}\n' + SUMMARY_CSS + DARK_MODE_CSS).encode('utf-8')
     (dest / 'bundle.css').write_bytes(css)
     css_version = sha256(css).hexdigest()[:12]
     (dest / 'skill-catalog.js').write_text('globalThis.UmaForkData=' + json.dumps(catalog) + ';', encoding='utf-8')

@@ -18,6 +18,38 @@ const kachi = {
   mood: 2, skills: [], forcedSkillPositions: {},
 };
 
+test('dark mode is opt-in, updates the root theme and persists across reloads', () => {
+  const saved = new Map();
+  const boot = () => {
+    const attributes = new Map();
+    const browser = {
+      localStorage: {getItem: key => saved.get(key) ?? null, setItem: (key, value) => saved.set(key, value)},
+      document: {documentElement: {setAttribute: (key, value) => attributes.set(key, value)}},
+    };
+    runInNewContext(read('skill-catalog.js'), browser);
+    runInNewContext(read('build-io.js'), browser);
+    return {io: browser.UmaFork, attributes};
+  };
+  const first = boot();
+  assert.equal(first.io.darkMode(), false);
+  assert.equal(first.attributes.get('data-fork-theme'), 'light');
+  first.io.setDarkMode(true);
+  assert.equal(first.attributes.get('data-fork-theme'), 'dark');
+  const reopened = boot();
+  assert.equal(reopened.io.darkMode(), true);
+  assert.equal(reopened.attributes.get('data-fork-theme'), 'dark');
+  reopened.io.setDarkMode(false);
+  assert.equal(boot().io.darkMode(), false);
+  const bundle = read('bundle.js');
+  const hp = bundle.indexOf('id:"showhp"');
+  const dark = bundle.indexOf('id:"fork-dark-mode"', hp);
+  const run = bundle.indexOf('id:"run"', hp);
+  assert.ok(hp >= 0 && hp < dark && dark < run);
+  assert.match(bundle, /defaultChecked:globalThis\.UmaFork\.darkMode\(\),onChange:e=>globalThis\.UmaFork\.setDarkMode\(e\.currentTarget\.checked\)/);
+  assert.match(read('bundle.css'), /#sidebar>\.fork-dark-mode-row\{margin-bottom:6px\}/);
+  assert.match(read('bundle.css'), /html\[data-fork-theme="dark"\]\{color-scheme:dark/);
+});
+
 test('Kachi build fields round-trip and forced positions become engine policies', () => {
   const fixture = {...kachi, skills: [white], forcedSkillPositions: {[white]: 240.5}};
   const imported = io.parse(JSON.stringify(fixture));

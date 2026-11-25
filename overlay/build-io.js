@@ -2,6 +2,19 @@
 (() => {
   'use strict';
   const {skills} = globalThis.UmaForkData;
+  const themeKey = 'umalator-global-sp.theme';
+  let darkTheme = false;
+  try { darkTheme = globalThis.localStorage?.getItem(themeKey) === 'dark'; } catch {}
+  function applyTheme() {
+    globalThis.document?.documentElement.setAttribute('data-fork-theme', darkTheme ? 'dark' : 'light');
+  }
+  function darkMode() { return darkTheme; }
+  function setDarkMode(enabled) {
+    darkTheme = Boolean(enabled);
+    applyTheme();
+    try { globalThis.localStorage?.setItem(themeKey, darkTheme ? 'dark' : 'light'); } catch {}
+  }
+  applyTheme();
   const groups = new Map();
   const costs = new Map();
   for (const [id, skill] of Object.entries(skills)) {
@@ -216,5 +229,5 @@
     };
   }
 
-  globalThis.UmaFork = Object.freeze({total, summary, rating, formatRating, rankIndex, filename, parse, stringify, importFile, exportFile, restoreDraft, watchDraft});
+  globalThis.UmaFork = Object.freeze({total, summary, rating, formatRating, rankIndex, filename, parse, stringify, importFile, exportFile, restoreDraft, watchDraft, darkMode, setDarkMode});
 })();
