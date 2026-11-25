@@ -87,6 +87,17 @@ test('Kachi build fields round-trip and forced positions become engine policies'
   assert.throws(() => io.parse(JSON.stringify({...kachi, skills: ['99999999']})), /Skills unavailable/);
 });
 
+test('new builds default to five stars while explicit imported star counts are retained', () => {
+  const defaults = read('bundle.js').match(/\{outfitId:"",starCount:5,[^{}]+?uniqueLv:3,mood:2,popularity:1\}/);
+  assert.ok(defaults);
+  const imported = io.parse(JSON.stringify(kachi));
+  assert.equal(imported.starCount, 5);
+  assert.equal(imported.uniqueLv, 3);
+  const saved = io.parse(JSON.stringify({...kachi, starCount: 2, uniqueLv: 2}));
+  assert.equal(saved.starCount, 2);
+  assert.equal(saved.uniqueLv, 2);
+});
+
 test('total skill points count each upgrade chain once', () => {
   const expected = skills[white].baseCost + skills[lower].baseCost;
   assert.ok(expected > 0);

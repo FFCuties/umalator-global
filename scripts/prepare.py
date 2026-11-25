@@ -153,6 +153,8 @@ def match_once(text, pattern):
 def integrate_bundle(bundle):
     # Build from the exact browser bundle Alpha123 ships. The paired source
     # changes below provide the readable equivalent and fail on drift as well.
+    defaults = match_once(bundle, r'\{outfitId:"",starCount:3,[^{}]+?uniqueLv:1,mood:2,popularity:1\}')
+    bundle = replace_once(bundle, defaults[0], defaults[0].replace('starCount:3', 'starCount:5').replace('uniqueLv:1,', 'uniqueLv:3,'))
     io = match_once(bundle,
                     r"function (\w+)\(\)\{window\.navigator\.clipboard\.writeText\(JSON\.stringify"
                     r"\((\w+)\((\w+)\(\)\)\)\),document\.activeElement\.blur\(\)\}"
@@ -325,6 +327,9 @@ def readable_rating_changes(horse, app):
 
 def readable_changes(read, destination, sha):
     horse = read('components/HorseDef.tsx').decode()
+    horse_types = read('components/HorseDefTypes.ts').decode()
+    default_state = match_once(horse_types, r'export const DEFAULT_HORSE_STATE = \{[\s\S]+?\};')[0]
+    horse_types = replace_once(horse_types, default_state, default_state.replace('starCount: 3,', 'starCount: 5,').replace('uniqueLv: 1,', 'uniqueLv: 3,'))
     horse = replace_once(horse, 'JSON.stringify(serializeUma(uma_GetCurrent()))',
                          f'{POINTER}.stringify(serializeUma(uma_GetCurrent()))')
     horse = replace_once(horse, 'navigator.clipboard.readText().then(JSON.parse)',
@@ -360,7 +365,7 @@ def readable_changes(read, destination, sha):
                                 <a href="LICENSE">GPL-3.0</a>
                             </div>
                         </details>''')
-    for name, content in [('components/HorseDef.tsx', horse), ('umalator/app.tsx', app)]:
+    for name, content in [('components/HorseDef.tsx', horse), ('components/HorseDefTypes.ts', horse_types), ('umalator/app.tsx', app)]:
         target = destination / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_text(localize(content), encoding='utf-8')
@@ -491,6 +496,7 @@ def prepare(read, sha, dest, files):
             f'<h1>Alpha123 Global fork source</h1><p>Changes dated 2026-11-21. GPL-3.0-or-later.</p>'
             f'<ul><li><a href="https://github.com/alpha123/uma-tools/tree/{sha}">Alpha123 source at {sha[:7]}</a></li>'
             '<li><a href="components/HorseDef.tsx">Modified runner editor</a></li>'
+            '<li><a href="components/HorseDefTypes.ts">Modified runner defaults</a></li>'
             '<li><a href="umalator/app.tsx">Modified app entry</a></li>'
             '<li><a href="../build-io.js">JSON compatibility and SP tracker</a></li>'
             '<li><a href="prepare.py">Build script</a></li></ul>')

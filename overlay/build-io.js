@@ -88,6 +88,8 @@
       aptitudes: ['S', 'S', 'S', 'S', 'A', 'A', 'A', 'A', 'A', 'A'],
       ...source, outfitId: String(source.outfitId), skills: source.skills.map(String),
     };
+    build.starCount = source.starCount ?? 5;
+    build.uniqueLv = source.uniqueLv ?? (build.starCount % 3 + Math.floor(build.starCount / 3));
     for (const stat of ['speed', 'stamina', 'power', 'guts', 'wisdom']) {
       if (!Number.isInteger(build[stat]) || build[stat] < 1) throw new Error(`Invalid ${stat}.`);
     }

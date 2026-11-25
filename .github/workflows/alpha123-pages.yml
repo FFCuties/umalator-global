@@ -37,6 +37,7 @@ jobs:
             /umalator/simulator.worker.js
             /umalator/app.tsx
             /components/HorseDef.tsx
+            /components/HorseDefTypes.ts
       - name: Build and test
         run: |
           python3 scripts/prepare.py upstream --sha "$(git -C upstream rev-parse HEAD)"
