@@ -90,6 +90,7 @@ test('Kachi build fields round-trip and forced positions become engine policies'
 test('new builds default to five stars while explicit imported star counts are retained', () => {
   const defaults = read('bundle.js').match(/\{outfitId:"",starCount:5,[^{}]+?uniqueLv:3,mood:2,popularity:1\}/);
   assert.ok(defaults);
+  assert.doesNotMatch(read('bundle.js'), /(\w+)=Math\.max\(\1,\w+\.rarity\)/);
   const imported = io.parse(JSON.stringify(kachi));
   assert.equal(imported.starCount, 5);
   assert.equal(imported.uniqueLv, 3);

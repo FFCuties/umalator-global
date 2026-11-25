@@ -155,6 +155,8 @@ def integrate_bundle(bundle):
     # changes below provide the readable equivalent and fail on drift as well.
     defaults = match_once(bundle, r'\{outfitId:"",starCount:3,[^{}]+?uniqueLv:1,mood:2,popularity:1\}')
     bundle = replace_once(bundle, defaults[0], defaults[0].replace('starCount:3', 'starCount:5').replace('uniqueLv:1,', 'uniqueLv:3,'))
+    selection = match_once(bundle, r'(\w+)=Math\.max\(\1,\w+\.rarity\)')
+    bundle = replace_once(bundle, selection[0], f'{selection[1]}=5')
     io = match_once(bundle,
                     r"function (\w+)\(\)\{window\.navigator\.clipboard\.writeText\(JSON\.stringify"
                     r"\((\w+)\((\w+)\(\)\)\)\),document\.activeElement\.blur\(\)\}"
@@ -327,6 +329,7 @@ def readable_rating_changes(horse, app):
 
 def readable_changes(read, destination, sha):
     horse = read('components/HorseDef.tsx').decode()
+    horse = replace_once(horse, 'starCount = Math.max(starCount, u.rarity);', 'starCount = 5;')
     horse_types = read('components/HorseDefTypes.ts').decode()
     default_state = match_once(horse_types, r'export const DEFAULT_HORSE_STATE = \{[\s\S]+?\};')[0]
     horse_types = replace_once(horse_types, default_state, default_state.replace('starCount: 3,', 'starCount: 5,').replace('uniqueLv: 1,', 'uniqueLv: 3,'))
