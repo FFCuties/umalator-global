@@ -170,10 +170,9 @@ jobs:
                   f'{{const build={current}();{POINTER}.exportFile({serialize}(build),'
                   f'{catalog}[build.outfitId.slice(0,4)]?.name[1],'
                   f'{POINTER}.rating(build,{calculate},{course}));}}')
-              compare = match_once(bundle, r'state:\w+\.uma1,aptitudesMode:"simulation",course:\w+,showPolicyEd:!0,tabstart:\(\)=>4\},\w+\?\w+\(\w+,\{id:(\w+)==0\?"ui\.uma1":"ui\.uma"')[1]
-              for slot in ('uma1', 'uma2'):
+              for slot in ('uma1', 'uma2', 'debufUma'):
                   editor = match_once(bundle, rf'state:\w+\.{slot},aptitudesMode:"simulation",course:\w+,showPolicyEd:!0,tabstart:')
-                  bundle = replace_once(bundle, editor[0], editor[0].replace('tabstart:', f'compareSummary:{compare}==0,tabstart:'))
+                  bundle = replace_once(bundle, editor[0], editor[0].replace('tabstart:', 'compareSummary:!0,tabstart:'))
               return bundle
           
           
@@ -201,9 +200,9 @@ jobs:
           						<output class="fork-sp" title="Total base skill points including prerequisites">{{{POINTER}.summary(build.skills.values())}} SP</output>
           					</>}}
           				</div>''')
-              for slot in ('uma1', 'uma2'):
+              for slot in ('uma1', 'uma2', 'debufUma'):
                   anchor = f'state={{O.{slot}}} aptitudesMode="simulation" course={{course}}'
-                  app = replace_once(app, anchor, anchor + ' compareSummary={mode == Mode.Compare}')
+                  app = replace_once(app, anchor, anchor + ' compareSummary={true}')
               return horse, app
           
           
@@ -668,7 +667,10 @@ jobs:
             assert.match(bundle, /clipboard\.readText\(\)\.then\(globalThis\.UmaFork\.parse\)/);
             assert.match(bundle, /UmaFork\.summary\(forkBuild\.skills\.values\(\)\)/);
             assert.match(bundle, /UmaFork\.formatRating\(forkRating\)/);
-            assert.equal([...bundle.matchAll(/compareSummary:\w+==0/g)].length, 2);
+            for (const slot of ['uma1', 'uma2', 'debufUma']) {
+              assert.match(bundle, new RegExp(`state:\\w+\\.${slot},aptitudesMode:"simulation",course:\\w+,showPolicyEd:!0,compareSummary:!0,tabstart:`));
+            }
+            assert.equal([...bundle.matchAll(/compareSummary:!0/g)].length, 3);
             assert.match(bundle, /new URL\("\.",document\.baseURI\)/);
             assert.match(read('simulator.worker.js'), /postMessage/);
           });
