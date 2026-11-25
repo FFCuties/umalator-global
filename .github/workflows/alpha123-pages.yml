@@ -31,7 +31,10 @@ jobs:
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             /LICENSE
+            /skill_meta.json
             /umalator-global/
+            /umalator/bundle.js
+            /umalator/simulator.worker.js
             /umalator/app.tsx
             /components/HorseDef.tsx
       - name: Build and test
@@ -39,7 +42,7 @@ jobs:
           mkdir -p scripts overlay
           cat > scripts/prepare.py <<'UMA_FORK_FILE'
           """Build Alpha123's original Global UI with the JSON and SP changes."""
-
+          
           import argparse
           import json
           import re
@@ -47,8 +50,8 @@ jobs:
           from hashlib import sha256
           from pathlib import Path
           from zipfile import ZipFile
-
-
+          
+          
           ASSETS = "https://alpha123.github.io/uma-tools/"
           BASE_PATH = 'new URL(".",document.baseURI).pathname.replace(/\\/$/,"")'
           POINTER = 'globalThis.UmaFork'
@@ -59,21 +62,21 @@ jobs:
           .fork-build-summary>output,.fork-build-summary>.fork-skills-title{background:linear-gradient(#a8e305,#61ae16) padding-box,linear-gradient(#addb3c,#558f18) border-box;border:2px solid transparent;border-radius:36px;box-shadow:0 3px #b4b2c0;color:#fff;padding:.22rem .35rem;text-align:center;font-weight:700;font-size:clamp(.85rem,2.6vw,1.15rem);line-height:1.3}
           .fork-build-summary>.fork-skills-title{grid-column:1/-1}
           '''
-
-
+          
+          
           def replace_once(text, anchor, replacement):
               if text.count(anchor) != 1:
                   raise ValueError(f"Upstream integration anchor changed: {anchor[:105]}")
               return text.replace(anchor, replacement, 1)
-
-
+          
+          
           def match_once(text, pattern):
               matches = list(re.finditer(pattern, text))
               if len(matches) != 1:
                   raise ValueError(f"Upstream integration pattern changed: {pattern[:105]}")
               return matches[0]
-
-
+          
+          
           def integrate_bundle(bundle):
               # Build from the exact browser bundle Alpha123 ships. The paired source
               # changes below provide the readable equivalent and fail on drift as well.
@@ -107,16 +110,16 @@ jobs:
               telemetry = match_once(bundle, r'\b(\w+)\(\);try\{window\.parent&&window\.parent\.location\.hostname')
               bundle = replace_once(bundle, telemetry[0], 'try{window.parent&&window.parent.location.hostname')
               return localize(bundle)
-
-
+          
+          
           def localize(text):
               return (text.replace('/uma-tools/icons', ASSETS + 'icons')
                       .replace('/uma-tools/fonts', ASSETS + 'fonts')
                       .replace('/uma-tools/courseimages', ASSETS + 'courseimages')
                       .replace('/uma-tools/vendor', ASSETS + 'vendor')
                       .replace('../vendor/opencv.js', ASSETS + 'vendor/opencv.js'))
-
-
+          
+          
           def integrate_autosave(bundle):
               serializers = match_once(bundle, rf'{re.escape(POINTER)}\.exportFile\((\w+)\(build\),')
               loader = match_once(bundle,
@@ -136,8 +139,8 @@ jobs:
               return replace_once(bundle, loader[0],
                   f'return {effect}(()=>{POINTER}.watchDraft({state},{serializers[1]},{decode},'
                   f'loaded=>{{{state}.setState({{...{state}.ref.current.state,...loaded}});{remount}(key=>!key)}}),[]),')
-
-
+          
+          
           def integrate_rating_bundle(bundle):
               score = match_once(bundle, r'(\w+)=-1;if\((\w+)\.showScore\)\{let (\w+)=(\w+)\(\2\.state\);\1=(\w+)\(\(\)=>(\w+)\(\3\),\[\3\]\)\}')
               value, props, _, getter, memo, calculate = score.groups()
@@ -172,8 +175,8 @@ jobs:
                   editor = match_once(bundle, rf'state:\w+\.{slot},aptitudesMode:"simulation",course:\w+,showPolicyEd:!0,tabstart:')
                   bundle = replace_once(bundle, editor[0], editor[0].replace('tabstart:', f'compareSummary:{compare}==0,tabstart:'))
               return bundle
-
-
+          
+          
           def readable_rating_changes(horse, app):
               score = match_once(horse, r'let score = -1;\s+if \(props\.showScore\) \{[^}]+\}')
               horse = replace_once(horse, score[0], f'''const build = useGetter(props.state);
@@ -202,8 +205,8 @@ jobs:
                   anchor = f'state={{O.{slot}}} aptitudesMode="simulation" course={{course}}'
                   app = replace_once(app, anchor, anchor + ' compareSummary={mode == Mode.Compare}')
               return horse, app
-
-
+          
+          
           def readable_changes(read, destination):
               horse = read('components/HorseDef.tsx').decode()
               horse = replace_once(horse, 'JSON.stringify(serializeUma(uma_GetCurrent()))',
@@ -228,8 +231,8 @@ jobs:
                   target = destination / name
                   target.parent.mkdir(parents=True, exist_ok=True)
                   target.write_text(localize(content), encoding='utf-8')
-
-
+          
+          
           def readable_autosave(app):
               chart = match_once(app, r'const loadedChartSkills = useGetter\(O\.chartSkills\);\s+const \[chartSkills, setChartSkills\] = useState\(loadedChartSkills \|\| \[\]\);')
               app = replace_once(app, chart[0], 'const [loadedChartSkills, setChartSkills] = useLens(O.chartSkills);\n'
@@ -242,25 +245,95 @@ jobs:
           		state.setState({{...state.ref.current.state, ...loaded}});
           		setKey(key => !key);
           	}}), []);''')
-
-
+          
+          
+          def bundled_object(source, anchor):
+              """Locate one esbuild data literal without executing the published bundle."""
+              if source.count(anchor) != 1:
+                  raise ValueError(f'Expected exactly one embedded data object: {anchor}')
+              start = source.index(anchor)
+              depth = 0
+              quoted = escaped = False
+              for end in range(start, len(source)):
+                  char = source[end]
+                  if quoted:
+                      if escaped:
+                          escaped = False
+                      elif char == '\\':
+                          escaped = True
+                      elif char == '"':
+                          quoted = False
+                  elif char == '"':
+                      quoted = True
+                  elif char == '{':
+                      depth += 1
+                  elif char == '}':
+                      depth -= 1
+                      if depth == 0:
+                          literal = source[start:end + 1]
+                          # esbuild emits bare property names in these JSON data literals.
+                          decoded = json.loads(re.sub(r'(?<=[{,])([A-Za-z]\w*):', r'"\1":', literal))
+                          return literal, decoded
+              raise ValueError(f'Unterminated data object: {anchor}')
+          
+          
+          def add_upcoming_skills(read, bundle, worker, skills, meta):
+              data_anchor = '{"100011":{alternatives:'
+              meta_anchor = '{"100011":{baseCost:'
+              jp_bundle = read('umalator/bundle.js').decode()
+              jp_worker = read('umalator/simulator.worker.js').decode()
+              _, jp_skills = bundled_object(jp_bundle, data_anchor)
+              _, jp_worker_skills = bundled_object(jp_worker, data_anchor)
+              if jp_skills != jp_worker_skills:
+                  raise ValueError('JP UI and engine skill data differ')
+              jp_meta = json.loads(read('skill_meta.json'))
+              names = json.loads(read('umalator-global/skillnames.json'))
+              upcoming = sorted((set(jp_skills) - set(skills)) & set(jp_meta) & set(names), key=int)
+              # Do not invent English names or overwrite skills already released in Global.
+              upcoming = [sid for sid in upcoming if names[sid] and isinstance(names[sid][0], str) and names[sid][0].strip()]
+              # The current upstream condition engine does not implement these conditions.
+              # The first two affected evolutions and the shared random roll throw during comparison.
+              unsupported_conditions = re.compile(r'\b(?:temptation_opponent_count_behind|random_lot_shared)\b')
+              excluded = {sid: names[sid][0] for sid in upcoming if any(
+                  unsupported_conditions.search(alt['condition']) or unsupported_conditions.search(alt['precondition'])
+                  for alt in jp_skills[sid]['alternatives']
+              )}
+              upcoming = [sid for sid in upcoming if sid not in excluded]
+              merged_skills = {**skills, **{sid: jp_skills[sid] for sid in upcoming}}
+              merged_meta = {**meta, **{sid: jp_meta[sid] for sid in upcoming}}
+              for label, source in [('UI', bundle), ('worker', worker)]:
+                  old_data, embedded = bundled_object(source, data_anchor)
+                  old_meta, embedded_meta = bundled_object(source, meta_anchor)
+                  if embedded != skills or embedded_meta != meta:
+                      raise ValueError(f'Global {label} skill data differs from upstream JSON')
+                  source = replace_once(source, old_data, json.dumps(merged_skills, ensure_ascii=True, separators=(',', ':')))
+                  source = replace_once(source, old_meta, json.dumps(merged_meta, ensure_ascii=True, separators=(',', ':')))
+                  if label == 'UI':
+                      bundle = source
+                  else:
+                      worker = source
+              return bundle, worker, merged_skills, merged_meta, {sid: names[sid][0] for sid in upcoming}, excluded
+          
+          
           def prepare(read, sha, dest, files):
               if not re.fullmatch(r'[0-9a-f]{40}', sha):
                   raise ValueError("Expected a full Alpha123 commit SHA")
               base = 'umalator-global/'
               meta = json.loads(read(base + 'skill_meta.json'))
               skills = json.loads(read(base + 'skill_data.json'))
-              catalog = {'revision': sha, 'skills': {
+              bundle = integrate_autosave(integrate_rating_bundle(integrate_bundle(read(base + 'bundle.js').decode())))
+              worker = read(base + 'simulator.worker.js').decode()
+              bundle, worker, skills, meta, upcoming, excluded = add_upcoming_skills(read, bundle, worker, skills, meta)
+              catalog = {'revision': sha, 'upcomingSkills': upcoming, 'excludedUpcomingSkills': excluded, 'skills': {
                   key: {**meta[key], 'rarity': value['rarity']} for key, value in skills.items()
               }}
-              bundle = integrate_autosave(integrate_rating_bundle(integrate_bundle(read(base + 'bundle.js').decode())))
-              worker = read(base + 'simulator.worker.js')
-              if not skills or not all(f'"{id}":'.encode() in worker for id in skills):
+              if not skills or not all(f'"{id}":' in worker for id in skills):
                   raise ValueError("Upstream worker and skill data have different skill IDs")
+              print(f'Added {len(upcoming)} upcoming skills with Global English names; {len(excluded)} unsupported; {len(skills)} total')
               dest.mkdir(parents=True, exist_ok=True)
               (dest / 'bundle.js').write_text(bundle, encoding='utf-8')
               bundle_version = sha256(bundle.encode('utf-8')).hexdigest()[:12]
-              (dest / 'simulator.worker.js').write_bytes(worker)
+              (dest / 'simulator.worker.js').write_text(worker, encoding='utf-8')
               css = (localize(read(base + 'bundle.css').decode()) +
                      '\n.fork-sp{margin-inline-start:.65em;white-space:nowrap;font-weight:600}\n' + SUMMARY_CSS).encode('utf-8')
               (dest / 'bundle.css').write_bytes(css)
@@ -293,8 +366,8 @@ jobs:
                       '<li><a href="../build-io.js">JSON compatibility and SP tracker</a></li>'
                       '<li><a href="prepare.py">Build script</a></li></ul>')
               (dest / 'source-changes/index.html').write_text(note, encoding='utf-8')
-
-
+          
+          
           def main():
               parser = argparse.ArgumentParser(description=__doc__)
               parser.add_argument('upstream', type=Path)
@@ -310,8 +383,8 @@ jobs:
                   if not args.sha:
                       parser.error('--sha is required for a checkout')
                   prepare(lambda name: (args.upstream / name).read_bytes(), args.sha, args.out, root)
-
-
+          
+          
           if __name__ == '__main__':
               main()
           UMA_FORK_FILE
@@ -536,12 +609,12 @@ jobs:
           import {runInNewContext} from 'node:vm';
           import {test} from 'node:test';
           import assert from 'node:assert/strict';
-
+          
           const read = name => readFileSync(new URL(`../dist/${name}`, import.meta.url), 'utf8');
           const realm = {};
           runInNewContext(read('skill-catalog.js'), realm);
           runInNewContext(read('build-io.js'), realm);
-          const {UmaFork: io, UmaForkData: {skills}} = realm;
+          const {UmaFork: io, UmaForkData: {skills, upcomingSkills}} = realm;
           const white = Object.keys(skills).find(id => skills[id].baseCost > 0 &&
             skills[id].rarity === 1 && !skills[id].iconId.endsWith('4') && skills[String(+id + 1)]?.groupId === skills[id].groupId &&
             skills[String(+id + 1)].rarity === 1 && !skills[String(+id + 1)].iconId.endsWith('4'));
@@ -551,7 +624,7 @@ jobs:
             strategy: 'Senkou', distanceAptitude: 'S', surfaceAptitude: 'A', strategyAptitude: 'A',
             mood: 2, skills: [], forcedSkillPositions: {},
           };
-
+          
           test('Kachi build fields round-trip and forced positions become engine policies', () => {
             const fixture = {...kachi, skills: [white], forcedSkillPositions: {[white]: 240.5}};
             const imported = io.parse(JSON.stringify(fixture));
@@ -562,14 +635,14 @@ jobs:
             for (const key of Object.keys(fixture)) assert.deepEqual(result[key], fixture[key]);
             assert.throws(() => io.parse(JSON.stringify({...kachi, skills: ['99999999']})), /Skills unavailable/);
           });
-
+          
           test('total skill points count each upgrade chain once', () => {
             const expected = skills[white].baseCost + skills[lower].baseCost;
             assert.ok(expected > 0);
             assert.equal(io.total([white, lower, white]), expected);
             assert.match(io.summary([white, '99999999']), /\+$/);
           });
-
+          
           test('rating uses the current comparison aptitudes without modifying the saved build', () => {
             const build = {...kachi, aptitudes: Array(10).fill('B')};
             let rated;
@@ -581,7 +654,7 @@ jobs:
             assert.equal(io.filename('T.M. Opera O', score), 't_m_opera_o_22765.json');
             assert.equal(io.filename('', score), 'uma_22765.json');
           });
-
+          
           test('all original modes load the integrated bundle and the engine worker is present', () => {
             for (const route of ['index.html', 'compare/index.html', 'skills/index.html', 'stamina/index.html']) {
               assert.match(read(route), /skill-catalog\.js[\s\S]+build-io\.js[\s\S]+bundle\.js/);
@@ -599,9 +672,47 @@ jobs:
             assert.match(bundle, /new URL\("\.",document\.baseURI\)/);
             assert.match(read('simulator.worker.js'), /postMessage/);
           });
+          
+          test('upcoming English-named skills are available for import, scoring and simulation', () => {
+            const bundle = read('bundle.js');
+            const worker = read('simulator.worker.js');
+            for (const [id, name] of Object.entries(upcomingSkills)) {
+              assert.ok(name.trim(), id);
+              assert.ok(skills[id], id);
+              assert.ok(bundle.includes(`"${id}":{"alternatives":`), `UI: ${id}`);
+              assert.ok(worker.includes(`"${id}":{"alternatives":`), `worker: ${id}`);
+              assert.deepEqual(Array.from(io.parse(JSON.stringify({...kachi, skills: [id]})).skills), [id]);
+              assert.ok(Number.isFinite(io.total([id])), id);
+            }
+          });
+          
+          test('every added skill can be simulated by the worker on a reference course', {timeout: 30000}, () => {
+            const course = {corners:[{length:225,start:650},{length:224,start:875}],course:1,
+              courseSetStatus:[1,2],distance:1600,distanceType:2,finishTimeMax:1080000,
+              finishTimeMin:941000,laneMax:12500,raceTrackId:10006,
+              slopes:[{length:200,slope:-10000,start:575},{length:250,slope:15000,start:1100}],
+              straights:[{end:650,frontType:2,start:0},{end:1600,frontType:1,start:1099}],surface:2,turn:2};
+            let receive, response;
+            runInNewContext(read('simulator.worker.js'), {
+              self:{addEventListener:(kind, callback)=>{if(kind==='message') receive=callback;}},
+              postMessage:message=>{response=message;},
+            }, {timeout:5000});
+            const build = {...kachi, starCount:3,uniqueLv:1,popularity:1,
+              aptitudes:['S','S','S','S','A','A','A','A','A','A'],skills:new Map(),samplePolicies:new Map()};
+            for (const [id, name] of Object.entries(upcomingSkills)) {
+              response = null;
+              receive({data:{msg:'compare',data:{nsamples:2,course,
+                racedef:{groundCondition:3,weather:1,season:4,time:2,grade:100,skillId:'',orderRange:null,numUmas:9},
+                uma1:{...build,skills:new Map([[skills[id].groupId,id]])},uma2:build,
+                options:{seed:2615953739,usePosKeep:true,useCompeteTop:true,useIntChecks:false}}}});
+              assert.equal(response?.results?.results?.length, 2, `${id}: ${name}`);
+              assert.ok(response.results.results.every(Number.isFinite), `${id}: ${name}`);
+            }
+          });
           UMA_FORK_FILE
           python3 scripts/prepare.py upstream --sha "$(git -C upstream rev-parse HEAD)"
           node --check dist/bundle.js
+          node --check dist/simulator.worker.js
           node --test scripts/smoke.test.mjs
       - uses: actions/upload-pages-artifact@v4
         with:
