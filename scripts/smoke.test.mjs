@@ -7,6 +7,7 @@ const read = name => readFileSync(new URL(`../dist/${name}`, import.meta.url), '
 const realm = {};
 runInNewContext(read('skill-catalog.js'), realm);
 runInNewContext(read('build-io.js'), realm);
+runInNewContext(read('build-card.js'), realm);
 const {UmaFork: io, UmaForkData: {skills, upcomingSkills}} = realm;
 const white = Object.keys(skills).find(id => skills[id].baseCost > 0 &&
   skills[id].rarity === 1 && !skills[id].iconId.endsWith('4') && skills[String(+id + 1)]?.groupId === skills[id].groupId &&
@@ -154,7 +155,7 @@ test('compact editor preserves aptitude controls and centers mood beneath live r
 
 test('all original modes load the integrated bundle and the engine worker is present', () => {
   for (const route of ['index.html', 'compare/index.html', 'skills/index.html', 'stamina/index.html']) {
-    assert.match(read(route), /skill-catalog\.js[\s\S]+build-io\.js[\s\S]+bundle\.js/);
+    assert.match(read(route), /skill-catalog\.js[\s\S]+build-io\.js[\s\S]+build-card\.js[\s\S]+bundle\.js/);
   }
   const bundle = read('bundle.js');
   for (const label of ['Save & load', 'Import JSON', 'Export JSON', 'Total base skill points including prerequisites']) {
@@ -171,6 +172,33 @@ test('all original modes load the integrated bundle and the engine worker is pre
   assert.equal([...bundle.matchAll(/compareSummary:!0/g)].length, 3);
   assert.match(bundle, /new URL\("\.",document\.baseURI\)/);
   assert.match(read('simulator.worker.js'), /postMessage/);
+});
+
+test('camera exports the current planned character to a complete, scalable card', () => {
+  const card = realm.UmaForkCard;
+  const selected = [white, lower];
+  const build = {...kachi, starCount:5, uniqueLv:3, outfitId:'100101', skills:selected, mood:2};
+  const data = card.createCardData(build, {name:'Special Week', epithet:'[Special Dreamer]', rating:27153, rank:34, course:{surface:2,distance:1600,distanceType:2}});
+  assert.equal(data.name, 'Special Week');
+  assert.equal(data.stars, 5);
+  assert.equal(data.filename, 'special_week_27153.png');
+  assert.equal(data.skills.length, selected.length);
+  assert.ok(data.skills.every(s => s.name === skills[s.id].name && s.icon));
+  assert.equal(data.groups[0].entries[1].grade, build.surfaceAptitude);
+  assert.equal(data.groups[1].entries[1].grade, build.distanceAptitude);
+  assert.equal(data.groups[2].entries[1].grade, build.strategyAptitude);
+  assert.equal(data.sp, io.summary(selected));
+  const text = [];
+  const ctx = {beginPath(){},roundRect(){},fill(){},stroke(){},fillRect(){},scale(){},drawImage(){},measureText(s){return {width:String(s).length*12};},fillText(s){text.push(s);}};
+  const canvas = {getContext(){return ctx;}};
+  card.renderCard(canvas,data);
+  assert.equal(canvas.width, 1200);
+  assert.equal(canvas.height, card.cardHeight(data));
+  assert.ok(text.includes(data.name) && text.includes('SKILL COUNT : 2'));
+  assert.ok(data.skills.every(skill => text.includes(skill.name)));
+  assert.ok(card.cardHeight({...data,skills:Array.from({length:30},()=>data.skills[0])})>canvas.height);
+  assert.match(read('bundle.js'), /title:"Export character image"[\s\S]{0,520}UmaForkCard\.exportCharacterCard\(build,/);
+  assert.match(read('bundle.js'), /Read from screenshot \(OCR\)/);
 });
 
 test('source attribution is available in the collapsed sidebar About / Source section, not the page footer', () => {

@@ -29,6 +29,20 @@ SUMMARY_CSS = '''
 .fork-about>summary{cursor:pointer;width:fit-content}
 .fork-about-links{display:flex;flex-direction:column;gap:3px;margin-top:5px;padding-left:12px}
 html[data-fork-theme="dark"] #sidebar>.fork-about{color:var(--fork-muted)}
+.fork-card-dialog{width:min(820px,92vw);max-height:88dvh;box-sizing:border-box;padding:18px;border:1px solid #b3c9b1;border-radius:16px;background:#fafbf7;color:#234b38;font:600 16px system-ui,sans-serif}
+.fork-card-dialog[open]{display:flex;flex-direction:column;gap:12px}
+.fork-card-dialog::backdrop{background:rgba(14,23,18,.72)}
+.fork-card-dialog h2{margin:0;font-size:1.3rem}
+.fork-card-scroll{flex:1;min-height:0;overflow:auto;background:#e9efe5;border-radius:8px;padding:6px;text-align:center}
+.fork-card-scroll img{display:block;width:100%;height:auto}
+.fork-card-actions{display:flex;gap:12px;justify-content:flex-end;flex-wrap:wrap}
+.fork-card-actions :is(a,button){border-radius:8px;padding:9px 17px;font:inherit;cursor:pointer;text-decoration:none}
+.fork-card-download{background:#366b45;border:1px solid #2c5938;color:white}
+.fork-card-close{background:#edf2e9;color:#234b38;border:1px solid #b3c9b1}
+html[data-fork-theme="dark"] .fork-card-dialog{background:var(--fork-panel);color:var(--fork-text);border-color:var(--fork-border)}
+html[data-fork-theme="dark"] .fork-card-scroll{background:var(--fork-bg)}
+html[data-fork-theme="dark"] .fork-card-close{background:var(--fork-control);color:var(--fork-text);border-color:var(--fork-outline)}
+html[data-fork-theme="dark"] .fork-card-download{background:var(--fork-green);color:var(--fork-text);border-color:#527746}
 @media (orientation:portrait){.horseAptitudes.fork-compact-aptitudes{gap:8px 8px;margin:0 12px}.fork-compact-aptitudes>output{font-size:.88em}.fork-race-context>img,.horseAptitudes>div.fork-legacy-mood>img{height:1.6em}}
 '''
 
@@ -276,6 +290,16 @@ def integrate_rating_bundle(bundle):
         f'{{const build={current}();{POINTER}.exportFile({serialize}(build),'
         f'{catalog}[build.outfitId.slice(0,4)]?.name[1],'
         f'{POINTER}.rating(build,{calculate},{course}));}}')
+    camera = match_once(bundle, r'(\w+)\(\w+,null,\1\("button",\{class:"circleBtn btnType2",title:\1\(\w+,\{id:"ocrtip"\}\),onClick:(\w+)\.bind\(null,!0\)\},"\\u\{1F4F7\}\\uFE0E"\)\)')
+    open_ocr = camera[2]
+    export_card = (f'{h}("button",{{class:"circleBtn btnType2",title:"Export character image","aria-label":"Export character image",onClick:e=>{{'
+                   f'const build={current}(),info={catalog}[build.outfitId.slice(0,4)],rating={POINTER}.rating(build,{calculate},{course});'
+                   f'globalThis.UmaForkCard.exportCharacterCard(build,{{name:info?.name[1],epithet:info?.outfits[build.outfitId]?.epithet,'
+                   f'portrait:e.currentTarget.closest(".horseDef")?.querySelector(".umaSelectorIconsBox>div>img")?.src,'
+                   f'rating,rank:{POINTER}.rankIndex(rating,{rank_thresholds}),course:{course}}});}}}},"\\u{{1F4F7}}\\uFE0E")')
+    bundle = replace_once(bundle, camera[0], export_card)
+    json_menu = match_once(bundle, rf'{h}\("li",null,{h}\("button",\{{onClick:\(\)=>\{{const build={current}\(\);[^}}]+\}}\}},"Export JSON"\)\)')
+    bundle = replace_once(bundle, json_menu[0], json_menu[0] + f',{props}.showOcr!==!1&&{h}("li",null,{h}("button",{{onClick:{open_ocr}.bind(null,!0)}},"Read from screenshot (OCR)"))')
     for slot in ('uma1', 'uma2', 'debufUma'):
         editor = match_once(bundle, rf'state:\w+\.{slot},aptitudesMode:"simulation",course:\w+,showPolicyEd:!0,tabstart:')
         bundle = replace_once(bundle, editor[0], editor[0].replace('tabstart:', 'compareSummary:!0,tabstart:'))
@@ -295,6 +319,18 @@ def readable_rating_changes(horse, app):
                                                 umas[current.outfitId.slice(0, 4)]?.name[1],
                                                 {POINTER}.rating(current, scoreUma, props.course));
                                         }}''')
+    camera = match_once(horse, r'<Localizer><button class="circleBtn btnType2" title=\{<Text id="ocrtip" />\} onClick=\{setOcrOpen\.bind\(null, true\)\}>[^<]+</button></Localizer>')[0]
+    horse = replace_once(horse, camera, f'''<button class="circleBtn btnType2" title="Export character image" aria-label="Export character image" onClick={{e => {{
+                                const current = uma_GetCurrent(), info = umas[current.outfitId.slice(0, 4)];
+                                const rating = {POINTER}.rating(current, scoreUma, props.course);
+                                globalThis.UmaForkCard.exportCharacterCard(current, {{
+                                    name: info?.name[1], epithet: info?.outfits[current.outfitId]?.epithet,
+                                    portrait: e.currentTarget.closest(".horseDef")?.querySelector(".umaSelectorIconsBox>div>img")?.src,
+                                    rating, rank: {POINTER}.rankIndex(rating, RankThresholds), course: props.course
+                                }});
+                            }}}}>📷&#xFE0E;</button>''')
+    ocr_menu = '<li><button onClick={clipbdPaste}>Paste from clipboard</button></li>'
+    horse = replace_once(horse, ocr_menu, ocr_menu + '\n                                        {props.showOcr !== false && <li><button onClick={setOcrOpen.bind(null, true)}>Read from screenshot (OCR)</button></li>}')
     head = match_once(horse, r'<div class="horseSkillHeader">[\s\S]+?</output>\s*</div>')
     horse = replace_once(horse, head[0], f'''<div class={{props.compareSummary ? "horseSkillHeader fork-compact-skills-title" : "horseSkillHeader"}}>
                     {{props.compareSummary ? "Skill count : " + build.skills.size : props.skillHeader || ("Skill count : " + build.skills.size)}}
@@ -465,8 +501,9 @@ def prepare(read, sha, dest, files):
     bundle = integrate_about(integrate_autosave(integrate_rating_bundle(integrate_bundle(read(base + 'bundle.js').decode()))), sha)
     worker = read(base + 'simulator.worker.js').decode()
     bundle, worker, skills, meta, upcoming, excluded = add_upcoming_skills(read, bundle, worker, skills, meta)
+    names = json.loads(read(base + 'skillnames.json'))
     catalog = {'revision': sha, 'upcomingSkills': upcoming, 'excludedUpcomingSkills': excluded, 'skills': {
-        key: {**meta[key], 'rarity': value['rarity']} for key, value in skills.items()
+        key: {**meta[key], 'rarity': value['rarity'], 'name': (names.get(key) or ['Skill ' + key])[0]} for key, value in skills.items()
     }}
     if not skills or not all(f'"{id}":' in worker for id in skills):
         raise ValueError("Upstream worker and skill data have different skill IDs")
@@ -482,6 +519,8 @@ def prepare(read, sha, dest, files):
     (dest / 'skill-catalog.js').write_text('globalThis.UmaForkData=' + json.dumps(catalog) + ';', encoding='utf-8')
     shutil.copyfile(files / 'overlay/build-io.js', dest / 'build-io.js')
     io_version = sha256((dest / 'build-io.js').read_bytes()).hexdigest()[:12]
+    shutil.copyfile(files / 'overlay/build-card.js', dest / 'build-card.js')
+    card_version = sha256((dest / 'build-card.js').read_bytes()).hexdigest()[:12]
     (dest / 'LICENSE').write_bytes(read('LICENSE'))
     readable_changes(read, dest / 'source-changes', sha)
     for route in ROUTES:
@@ -490,6 +529,7 @@ def prepare(read, sha, dest, files):
         html = replace_once(html, '<script src="bundle.js"></script>',
                             '<script src="skill-catalog.js"></script>\n'
                             f'\t\t<script src="build-io.js?v={io_version}"></script>\n'
+                            f'\t\t<script src="build-card.js?v={card_version}"></script>\n'
                             f'\t\t<script src="bundle.js?v={bundle_version}"></script>')
         target = dest / route
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -502,6 +542,7 @@ def prepare(read, sha, dest, files):
             '<li><a href="components/HorseDefTypes.ts">Modified runner defaults</a></li>'
             '<li><a href="umalator/app.tsx">Modified app entry</a></li>'
             '<li><a href="../build-io.js">JSON compatibility and SP tracker</a></li>'
+            '<li><a href="../build-card.js">Planned character PNG exporter</a></li>'
             '<li><a href="prepare.py">Build script</a></li></ul>')
     (dest / 'source-changes/index.html').write_text(note, encoding='utf-8')
 
