@@ -50,6 +50,32 @@ test('dark mode is opt-in, updates the root theme and persists across reloads', 
   assert.match(read('bundle.css'), /html\[data-fork-theme="dark"\]\{color-scheme:dark/);
 });
 
+test('dark theme contrast, chart colors, and removal of legacy white frames', () => {
+  const css = read('bundle.css');
+  const theme = css.match(/html\[data-fork-theme="dark"\]\{([^}]+)\}/)?.[1];
+  assert.ok(theme);
+  const tokens = Object.fromEntries([...theme.matchAll(/(--[\w-]+):(#\w{6})/g)].map(([, name, value]) => [name, value]));
+  function luminance(hex) {
+    const rgb = hex.slice(1).match(/../g).map(x => parseInt(x, 16)/255).map(x => x <= 0.04045 ? x/12.92 : ((x+0.055)/1.055)**2.4);
+    return rgb[0]*0.2126+rgb[1]*0.7152+rgb[2]*0.0722;
+  }
+  const ratio = (a,b) => (Math.max(luminance(a),luminance(b))+.05)/(Math.min(luminance(a),luminance(b))+.05);
+  for (const bg of ['--fork-bg','--fork-panel','--fork-control','--fork-raised','--fork-green','--fork-green-low']) {
+    assert.ok(ratio(tokens['--fork-text'],tokens[bg]) >= 4.5, bg);
+  }
+  assert.ok(ratio(tokens['--fork-muted'],tokens['--fork-control']) >= 4.5);
+  assert.ok(ratio(tokens['--fork-outline'],tokens['--fork-control']) >= 3);
+  assert.ok(ratio(tokens['--fork-accent'],tokens['--fork-control']) >= 3);
+  for (const fill of ['#374c21','#3f3548','#514021','#594825','#214943','#294f49','#343e47','#253d54','#2f465e','#58432c','#614a34','#245246','#514d25','#56344b','#633850','#29343d']) {
+    assert.ok(ratio(tokens['--fork-text'],fill) >= 4.5, fill);
+    assert.ok(css.includes(`fill:${fill}`), fill);
+  }
+  assert.match(css, /#modeBar\{box-shadow:none/);
+  assert.match(css, /\.hasResults \.racetrackView>svg text:not\(\.mouseoverText\)\{filter:none\}/);
+  assert.match(css, /input::placeholder\{color:var\(--fork-muted\);opacity:1\}/);
+  assert.match(css, /\.skill,\.stdBtn,\.pillBtn,\.circleBtn,\.splitBtn:active\)\{box-shadow:0 2px 3px #0c1015aa\}/);
+});
+
 test('Kachi build fields round-trip and forced positions become engine policies', () => {
   const fixture = {...kachi, skills: [white], forcedSkillPositions: {[white]: 240.5}};
   const imported = io.parse(JSON.stringify(fixture));

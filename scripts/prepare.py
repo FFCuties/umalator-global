@@ -30,36 +30,107 @@ SUMMARY_CSS = '''
 
 DARK_MODE_CSS = '''
 #sidebar>.fork-dark-mode-row{margin-bottom:6px}
-html[data-fork-theme="dark"]{color-scheme:dark;--fork-bg:#14191e;--fork-panel:#20282f;--fork-control:#29343d;--fork-border:#485962;--fork-text:#edf2f5;--uma1-color:#72b5ff;--uma2-color:#ff8989;background:var(--fork-bg);color:var(--fork-text)}
+/* Dark surfaces, readable foregrounds and independent focus indicators. */
+html[data-fork-theme="dark"]{color-scheme:dark;--fork-bg:#14191e;--fork-panel:#20282f;--fork-control:#29343d;--fork-raised:#35434d;--fork-border:#465660;--fork-outline:#82949e;--fork-text:#e9eef2;--fork-muted:#b5c2cc;--fork-accent:#b1dd85;--fork-green:#3d6529;--fork-green-low:#2f4b21;--uma1-color:#80bfff;--uma2-color:#ff9999;background:var(--fork-bg);color:var(--fork-text)}
 html[data-fork-theme="dark"] body{background:var(--fork-bg);color:var(--fork-text)}
 html[data-fork-theme="dark"] a{color:#9acbff}
-html[data-fork-theme="dark"] :is(.horseDef,#nonUmaPanes,#umaOverlay){background:var(--fork-panel);border-color:#496b49;color:var(--fork-text)}
+html[data-fork-theme="dark"] :is(.horseDef,#nonUmaPanes,#umaOverlay){background:var(--fork-panel);border-color:var(--fork-border);color:var(--fork-text)}
 html[data-fork-theme="dark"] :is(.horseSkillListWrapper,#resultsPaneWrapper){background:#192126}
-html[data-fork-theme="dark"] :is(.horseParams,.horseFullAptitudes>div,.horseAptitudes>div,.horseAptitudes.fork-compact-aptitudes>.fork-aptitude,.addSkillButton,.horseAptitudeSelect>ul,.umaSuggestion,.umaScore,.trackSelect>select,.presetSelect>select,.splitBtn>div>ul,.savedHorseTableWrapper,.basinnChartWrapper,.basinnChartPopover,#infoTables>table,#infoTables caption,#resultsSummary>tbody td){background:var(--fork-control);border-color:var(--fork-border);color:var(--fork-text)}
+html[data-fork-theme="dark"] :is(.horseParams,.horseFullAptitudes>div,.horseAptitudes>div,.addSkillButton,.horseAptitudeSelect>ul,.umaSuggestion,.umaScore,.trackSelect>select,.presetSelect>select,.splitBtn>div>ul,.savedHorseTableWrapper,.basinnChartWrapper,.basinnChartPopover){background:var(--fork-control);border-color:var(--fork-border);color:var(--fork-text)}
+html[data-fork-theme="dark"] :is(#infoTables>table,#infoTables caption,#resultsSummary>tbody td){background:var(--fork-control);border-color:var(--fork-border);color:var(--fork-text)}
+html[data-fork-theme="dark"] .horseAptitudes.fork-compact-aptitudes>.fork-aptitude{background:var(--fork-control);border-color:var(--fork-outline);color:var(--fork-text)}
 html[data-fork-theme="dark"] :is(.horseSkillPickerWrapper,.skillListButtonsRow){background:var(--fork-panel);color:var(--fork-text)}
-html[data-fork-theme="dark"] :is(.horseAptitudes.fork-compact-aptitudes>.fork-live-rank,.horseAptitudes.fork-compact-aptitudes>.fork-race-context){background:transparent;border:0;color:var(--fork-text)}
-html[data-fork-theme="dark"] :is(.umaEpithet>span,.umaSelectInput,.horseParam>input,.horseAptitudes>div:last-child>input,.ocrUpload,.groundSelect,.stacalcPane,.reqStamCalc>input,.savedHorseTable,.basinnChart,#resultsHelp,#resultsSummary>tfoot th,#infoTables>table th,#swapUmas){color:var(--fork-text)}
-html[data-fork-theme="dark"] :is(.racetrackName){color:var(--fork-text);-webkit-text-stroke:0;text-shadow:none}
-html[data-fork-theme="dark"] :is(.umaTab:not(.selected),.modeBtn:not(.modeBtnActive),.btnType2,.splitBtn.btnType2>div,.savedHorseTable th,.basinnChart th,#copyUmaButtons>div){background:linear-gradient(#35434d,#28343b);color:var(--fork-text);border-color:var(--fork-border);outline-color:var(--fork-border)}
-html[data-fork-theme="dark"] :is(.horseDefHeader,.umaTab.selected,.modeBtn.modeBtnActive,.btnType1,.splitBtn.btnType1>div,.horseSkillHeader,.fork-compact-aptitudes>output,#expandBtn,.horseParamHeader){background:linear-gradient(#558d25,#365d1c);color:#fff;border-color:#659944;box-shadow:none}
-html[data-fork-theme="dark"] :is(.umaSuggestion:nth-child(2n),.presetSelect>legend){background:#35434d;color:var(--fork-text)}
+html[data-fork-theme="dark"] .horseAptitudes.fork-compact-aptitudes>:is(.fork-live-rank,.fork-race-context),html[data-fork-theme="dark"] .horseAptitudes:not(.fork-compact-aptitudes)>div:nth-child(3n),html[data-fork-theme="dark"] .horseFullAptitudes>div:nth-child(5n+1){background:transparent;border:0;color:var(--fork-text)}
+html[data-fork-theme="dark"] :is(.umaEpithet>span,.umaSelectInput,.horseParam>input,.horseAptitudes>div:last-child>input,.ocrUpload,.groundSelect,.stacalcPane,.reqStamCalc>input,.savedHorseTable,.basinnChart){color:var(--fork-text)}
+html[data-fork-theme="dark"] :is(#resultsHelp,#resultsSummary>tfoot th,#infoTables>table th,#swapUmas){color:var(--fork-text)}
+html[data-fork-theme="dark"] .racetrackName{color:var(--fork-text);-webkit-text-stroke:0;text-shadow:none}
+html[data-fork-theme="dark"] :is(.umaTab:not(.selected),.modeBtn:not(.modeBtnActive),.btnType2,.splitBtn.btnType2>div,.savedHorseTable th,.basinnChart th){background:linear-gradient(var(--fork-raised),var(--fork-control));color:var(--fork-text);border-color:var(--fork-border);outline-color:var(--fork-border)}
+html[data-fork-theme="dark"] #copyUmaButtons>div{background:var(--fork-control);border-color:var(--fork-outline)}
+html[data-fork-theme="dark"] :is(.horseDefHeader,.umaTab.selected,.modeBtn.modeBtnActive,.btnType1,.splitBtn.btnType1>div,.horseSkillHeader,.fork-compact-aptitudes>output,.horseParamHeader){background:linear-gradient(var(--fork-green),var(--fork-green-low));color:var(--fork-text);border-color:#527746;outline-color:#527746;box-shadow:none;text-shadow:none}
+html[data-fork-theme="dark"] #expandBtn{background:var(--fork-green);border-color:#527746}
+html[data-fork-theme="dark"] .selected>#expandBtn{background:var(--fork-control);border-color:var(--fork-outline)}
+html[data-fork-theme="dark"] :is(.umaSuggestion:nth-child(2n),.presetSelect>legend){background:var(--fork-raised);color:var(--fork-text)}
 html[data-fork-theme="dark"] :is(.umaSuggestion.selected,.umaSuggestion:hover,.horseAptitudeSelect li:hover){background:#265f93;color:#fff}
-html[data-fork-theme="dark"] :is(.savedHorseTable>tbody>tr.selected,.basinnChart tr.selected){background:#41652e;color:#fff}
-html[data-fork-theme="dark"] .presetSelect>legend:after{border-top-color:#35434d}
+html[data-fork-theme="dark"] :is(.savedHorseTable>tbody>tr.selected,.basinnChart tr.selected){background:var(--fork-green);color:var(--fork-text)}
+html[data-fork-theme="dark"] .presetSelect>legend:after{border-top-color:var(--fork-raised)}
+/* Remove original light drop shadows, thick outlines and brown chevrons. */
+html[data-fork-theme="dark"] :is(.skill,.stdBtn,.pillBtn,.circleBtn,.splitBtn:active){box-shadow:0 2px 3px #0c1015aa}
+html[data-fork-theme="dark"] #modeBar{box-shadow:none;margin-bottom:0}
+html[data-fork-theme="dark"] :is(.horseAptitudeSelect>span,.savedHorseTableSortedAsc span,.savedHorseTableSortedDesc span,.basinnChartSortedAsc span,.basinnChartSortedDesc span)::after{border-color:var(--fork-muted)}
+html[data-fork-theme="dark"] :is(#copyUmaButtons>div,.selected>#expandBtn)::after{border-color:var(--fork-text)}
+html[data-fork-theme="dark"] :is(.savedHorseTable .columnHeader,.basinnChart .columnHeader,.splitBtn>div>ul>li:empty){border-bottom-color:var(--fork-border)}
+html[data-fork-theme="dark"] #infoTables tbody{border-bottom-color:var(--fork-border)}
+html[data-fork-theme="dark"] #infoTables>.uma1>caption>div{background:#2b547b;color:var(--fork-text)}
+html[data-fork-theme="dark"] #infoTables>.uma1>caption>div:after{border-color:#2b547b transparent transparent transparent}
+html[data-fork-theme="dark"] #infoTables>.uma2>caption>div{background:#713a43;color:var(--fork-text)}
+html[data-fork-theme="dark"] #infoTables>.uma2>caption>div:after{border-color:#713a43 transparent transparent transparent}
+html[data-fork-theme="dark"] .horseParamHeader>span{text-shadow:none}
+html[data-fork-theme="dark"] .horseParam{border-left-color:#526849}
+html[data-fork-theme="dark"] .ocrUpload>:first-child{border-color:var(--fork-muted);border-image:none}
+html[data-fork-theme="dark"] .basinnChartWrapper.dirty{border-color:#ce9b54}
+/* Native form controls and focus-visible rings. */
+html[data-fork-theme="dark"] :is(.filterSearch,.savedHorseTable input),html[data-fork-theme="dark"] #sidebar input[type=number]{background:var(--fork-control);color:var(--fork-text);border:1px solid var(--fork-outline);border-radius:4px}
+html[data-fork-theme="dark"] input::placeholder{color:var(--fork-muted);opacity:1}
+html[data-fork-theme="dark"] :is(.trackSelect>select,.presetSelect>select,.umaSuggestions,.horseAptitudeSelect>ul){border-color:var(--fork-outline)}
+html[data-fork-theme="dark"] fieldset{border-color:var(--fork-border)}
+html[data-fork-theme="dark"] :is(input,button,select,a,[tabindex]):focus-visible{outline:2px solid var(--fork-accent);outline-offset:2px}
 html[data-fork-theme="dark"] input:is([type=checkbox],[type=radio]){accent-color:#82b94f}
+html[data-fork-theme="dark"] .hintbtn.hintDown{background:var(--fork-raised);outline-color:var(--fork-outline)}
+html[data-fork-theme="dark"] .hintbtn.hintDown:before,html[data-fork-theme="dark"] .hintDown .hintbtnDummyBackground{background:var(--fork-raised)}
+html[data-fork-theme="dark"] .hintDown .hintbtnText{color:var(--fork-text)}
+html[data-fork-theme="dark"] .hintbtn.hintUp,html[data-fork-theme="dark"] .hintbtn.hintUp:before,html[data-fork-theme="dark"] .hintUp .hintbtnDummyBackground{background:var(--fork-green);outline-color:#527746}
+html[data-fork-theme="dark"] .hintLevel{color:#ffcc87}
+html[data-fork-theme="dark"] .onoff:not(:checked){background:var(--fork-raised);border-color:var(--fork-outline)}
+html[data-fork-theme="dark"] .onoff:checked{background:var(--fork-green);border-color:#527746}
+html[data-fork-theme="dark"] .onoff:before,html[data-fork-theme="dark"] .onoff:checked:before{color:var(--fork-text);text-shadow:none}
+html[data-fork-theme="dark"] .onoff:after{background:#83949d;border-color:var(--fork-border)}
 html[data-fork-theme="dark"] :is(.skill-white,.skill-gold,.skill-pink,.skill-unique){color:var(--fork-text)}
-html[data-fork-theme="dark"] .skill-white{background:linear-gradient(90deg,#35434d,#26323c) padding-box,linear-gradient(90deg,#667984,#4d616b) border-box}
-html[data-fork-theme="dark"] .skill-gold{background:linear-gradient(90deg,#6b5020,#483715) padding-box,linear-gradient(90deg,#d3ad48,#987322) border-box}
-html[data-fork-theme="dark"] .skill-pink{background:linear-gradient(90deg,#67364f,#48273d) padding-box,linear-gradient(90deg,#d17ca8,#9c567e) border-box}
-html[data-fork-theme="dark"] .skill-unique{background:linear-gradient(90deg,#365d48,#374b69,#5b3c66) padding-box,linear-gradient(90deg,#74a793,#8fa6d4,#bc84c1) border-box}
+html[data-fork-theme="dark"] .skill-white{background:linear-gradient(90deg,#35434d,#26323c) padding-box,linear-gradient(90deg,#52636e,#465660) border-box}
+html[data-fork-theme="dark"] .skill-gold{background:linear-gradient(90deg,#6b5020,#483715) padding-box,linear-gradient(90deg,#a38a43,#80652b) border-box}
+html[data-fork-theme="dark"] .skill-pink{background:linear-gradient(90deg,#67364f,#48273d) padding-box,linear-gradient(90deg,#a66a8d,#8a4e70) border-box}
+html[data-fork-theme="dark"] .skill-unique{background:linear-gradient(90deg,#365d48,#374b69,#5b3c66) padding-box,linear-gradient(90deg,#648c7d,#7086ad,#9b71a3) border-box}
 html[data-fork-theme="dark"] :is(.skillName,.skillLv>label,.skillLv>input,.skillDismiss,.skillDetails,.skillActivationEditor>select,.skillActivationParams>input[type=number]){color:var(--fork-text);-webkit-text-stroke:0;text-shadow:none}
-html[data-fork-theme="dark"] .filterButton{background:#35434d;color:var(--fork-text);-webkit-text-stroke:0;box-shadow:none}
-html[data-fork-theme="dark"] .filterButton.active{background:#41652e;color:#fff}
-html[data-fork-theme="dark"] #midPane svg text:not([fill]):not(.sectionText):not(.distanceMarker):not(.slopePer):not(.mouseoverText){fill:#dbe4e9}
-html[data-fork-theme="dark"] #midPane svg [stroke="black"],html[data-fork-theme="dark"] #midPane svg [stroke="#000"]{stroke:#9aabb2}
-html[data-fork-theme="dark"] #rtMouseOverBox>text{stroke:#192126}
+html[data-fork-theme="dark"] .filterButton{background:var(--fork-raised);color:var(--fork-text);-webkit-text-stroke:0;box-shadow:none;border:1px solid var(--fork-border)}
+html[data-fork-theme="dark"] .filterButton.active{background:var(--fork-green);color:var(--fork-text);border-color:#527746}
+/* Charts retain meaningful hues but use muted dark fills and bright labels. */
+html[data-fork-theme="dark"] #midPane svg text:not([fill]){fill:var(--fork-text)}
+html[data-fork-theme="dark"] .racetrackView svg :is(.sectionText,.distanceMarker,.slopePer,.mouseoverText){fill:var(--fork-text);stroke:var(--fork-bg);stroke-width:2px;paint-order:stroke}
+html[data-fork-theme="dark"] .hasResults .racetrackView>svg text:not(.mouseoverText){filter:none}
+html[data-fork-theme="dark"] .racetrackView svg text[fill="rgb(107,145,173)"]{fill:var(--fork-muted)}
+html[data-fork-theme="dark"] .racetrackView svg [stroke="rgb(121,64,22)"]{stroke:var(--fork-muted)}
+html[data-fork-theme="dark"] #midPane svg :is([stroke="black"],[stroke="#000"],[stroke="currentColor"]){stroke:var(--fork-muted)}
+html[data-fork-theme="dark"] #midPane svg :is([stroke*="42, 119, 197"],[stroke*="42,119,197"],[stroke="#2a77c5"]){stroke:var(--uma1-color)}
+html[data-fork-theme="dark"] #midPane svg :is([stroke*="197, 42, 42"],[stroke*="197,42,42"],[stroke="#c52a2a"]){stroke:var(--uma2-color)}
+html[data-fork-theme="dark"] #midPane svg :is([fill*="rgb(42, 119, 197)"],[fill*="rgb(42,119,197)"],[fill="#2a77c5"]){fill:var(--uma1-color)}
+html[data-fork-theme="dark"] #midPane svg :is([fill*="rgb(197, 42, 42)"],[fill*="rgb(197,42,42)"],[fill="#c52a2a"]){fill:var(--uma2-color)}
+html[data-fork-theme="dark"] #rtMouseOverBox>text{stroke:var(--fork-bg)}
 @media(orientation:portrait){#sidebar>.fork-dark-mode-row{flex-basis:100%;margin-bottom:6px}#sidebar>#run{margin-top:20px}}
 '''
+
+# Presentation attributes are stable in upstream's RaceTrack component. Keep
+# semantic band hues and only change their visual appearance in dark mode.
+DARK_CHART_PALETTE = {
+    '211,243,68': '#374c21', '140,170,10': '#66874a',
+    '239,229,241': '#3f3548', '163,106,175': '#735b89',
+    '234,207,147': '#514021', '229,196,120': '#594825',
+    '82,195,184': '#214943', '116,206,198': '#294f49',
+    '191,143,37': '#947844', '175,132,33': '#816a3a',
+    '42,123,115': '#487f76', '50,142,134': '#548e85',
+    '232,232,232': '#343e47', '139,139,139': '#687782',
+    '209,235,255': '#253d54', '185,224,255': '#2f465e',
+    '23,154,255': '#527fa8', '9,146,254': '#4c75a0',
+    '255,216,185': '#58432c', '254,228,209': '#614a34',
+    '254,117,9': '#a77946', '250,121,27': '#99683c',
+    '0,154,111': '#245246', '0,92,66': '#478574',
+    '242,233,103': '#514d25', '190,179,16': '#86804c',
+    '209,134,175': '#56344b', '149,56,107': '#89516f',
+    '199,109,159': '#633850', '133,51,96': '#975e80',
+    '228,235,240': '#29343d', '107,145,173': '#788995',
+}
+DARK_MODE_CSS += ''.join(
+    f'\nhtml[data-fork-theme="dark"] .racetrackView svg :is(rect,polygon)[fill="rgb({rgb})"]{{fill:{color}}}'
+    for rgb, color in DARK_CHART_PALETTE.items()
+)
 
 
 def replace_once(text, anchor, replacement):
