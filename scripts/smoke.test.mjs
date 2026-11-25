@@ -137,6 +137,7 @@ test('compact editor preserves aptitude controls and centers mood beneath live r
   assert.match(read('bundle.css'), /grid-template-areas:"surface distance rank" "strategy style rank" "sp rating context"/);
   assert.match(read('bundle.css'), /fork-race-context\{grid-area:context;align-self:stretch;align-items:center;justify-content:center/);
   assert.match(bundle, /horseSkillHeader fork-compact-skills-title/);
+  assert.match(bundle, /compareSummary\?"Skill count : "\+forkBuild\.skills\.size/);
 });
 
 test('all original modes load the integrated bundle and the engine worker is present', () => {

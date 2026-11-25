@@ -264,7 +264,7 @@ def integrate_rating_bundle(bundle):
     bundle = replace_once(bundle, apt[0], f'case"simulation":return {props}.compareSummary?{compact}:{fallback};case"full":')
     bundle = replace_once(bundle, header[0],
         f'{h}("div",{{class:{props}.compareSummary?"horseSkillHeader fork-compact-skills-title":"horseSkillHeader"}},'
-        f'{props}.compareSummary?{title}:[{title},{old_sp[:-1]}+" SP")])')
+        f'{props}.compareSummary?"Skill count : "+forkBuild.skills.size:[{props}.skillHeader||("Skill count : "+forkBuild.skills.size),{old_sp[:-1]}+" SP")])')
     catalog = match_once(bundle, r'Object\.keys\((\w+)\)\.flatMap\((\w+)=>Object\.keys\(\1\[\2\]\.outfits\)\)')[1]
     export = match_once(bundle, rf'{re.escape(POINTER)}\.exportFile\((\w+)\((\w+)\(\)\)\)')
     serialize, current = export.groups()
@@ -293,7 +293,7 @@ def readable_rating_changes(horse, app):
                                         }}''')
     head = match_once(horse, r'<div class="horseSkillHeader">[\s\S]+?</output>\s*</div>')
     horse = replace_once(horse, head[0], f'''<div class={{props.compareSummary ? "horseSkillHeader fork-compact-skills-title" : "horseSkillHeader"}}>
-					{{props.skillHeader || <Text id="skillheader" />}}
+                    {{props.compareSummary ? "Skill count : " + build.skills.size : props.skillHeader || ("Skill count : " + build.skills.size)}}
 					{{!props.compareSummary && <output class="fork-sp" title="Total base skill points including prerequisites">{{{POINTER}.summary(build.skills.values())}} SP</output>}}
 				</div>''')
     sim = match_once(horse, r"case 'simulation':\s+return \(")[0]
