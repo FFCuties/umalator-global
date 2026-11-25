@@ -187,6 +187,10 @@ test('camera exports the current planned character to a complete, scalable card'
   assert.equal(data.groups[0].entries[1].grade, build.surfaceAptitude);
   assert.equal(data.groups[1].entries[1].grade, build.distanceAptitude);
   assert.equal(data.groups[2].entries[1].grade, build.strategyAptitude);
+  assert.deepEqual(Array.from(data.groups, g=>g.label), ['Track','Distance','Style']);
+  assert.deepEqual(Array.from(data.groups, g=>g.entries.length), [2,4,4]);
+  assert.ok(data.stats.every(s=>s.icon.includes('/statusrank/')));
+  assert.match(data.groups[0].entries[1].icon, /utx_ico_statusrank_06\.png$/);
   assert.equal(data.sp, io.summary(selected));
   const text = [];
   const ctx = {beginPath(){},roundRect(){},fill(){},stroke(){},fillRect(){},scale(){},drawImage(){},measureText(s){return {width:String(s).length*12};},fillText(s){text.push(s);}};
