@@ -5,6 +5,8 @@ import json
 import re
 import shutil
 from hashlib import sha256
+from html import escape
+from os import environ
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -183,14 +185,16 @@ def integrate_bundle(bundle):
     clipboard = clipboard.replace('.then(JSON.parse)', f'.then({POINTER}.parse)', 1)
     bundle = replace_once(bundle, io[0], clipboard)
     item = match_once(bundle, rf'(\w+)\("li",null,\1\("button",\{{onClick:{paste}\}},"Paste from clipboard"\)\)')
+    header = match_once(bundle, r'(\w+)\("div",\{class:"horseSkillHeader"\},(\w+)\.skillHeader\|\|\1\(\w+,\{id:"skillheader"\}\)\)')
     h = item[1]
     menu = (
         item[0] + f',{h}("li",null,{h}("button",{{onClick:()=>{POINTER}.importFile'
         f'(value=>{update}({deserialize}(value)))}},"Import JSON")),'
+        f'{POINTER}.partnerEndpoint()?{h}("li",null,{h}("button",{{onClick:()=>{POINTER}.importPartner'
+        f'(value=>{update}({deserialize}(value)),{header[2]}.course)}},"Import Partner ID")):null,'
         f'{h}("li",null,{h}("button",{{onClick:()=>{POINTER}.exportFile({serialize}({current}()))}},"Export JSON"))'
     )
     bundle = replace_once(bundle, item[0], menu)
-    header = match_once(bundle, r'(\w+)\("div",\{class:"horseSkillHeader"\},\w+\.skillHeader\|\|\1\(\w+,\{id:"skillheader"\}\)\)')
     h = header[1]
     label = (
         f',{h}("output",{{class:"fork-sp",title:"Total base skill points including prerequisites"}},'
@@ -274,7 +278,7 @@ def integrate_rating_bundle(bundle):
     controls = [item.replace(f'{h}("div",null,', f'{h}("div",{{class:"fork-aptitude fork-{area}"}},', 1)
                 for item, area in zip((surface, distance, strategy, style), ('surface', 'distance', 'strategy', 'style'))]
     rank = f'{POINTER}.rankIndex(forkRating,{rank_thresholds})'
-    rank_badge = (f'{h}("div",{{class:"fork-live-rank"}},{rank}===null?{h}("span",null,"—"):'
+    rank_badge = (f'{h}("div",{{class:"fork-live-rank"}},{rank}===null?{h}("span",null,"-"):'
                   f'{h}("img",{{src:`{ASSETS}icons/rank/utx_txt_rank_${{{rank}}}.png`,alt:"Live rank",title:"Rank for "+{POINTER}.formatRating(forkRating)}}))')
     sp = f'{h}("output",{{class:"fork-sp-summary",title:"Total base skill points including prerequisites"}},"SP : "+{POINTER}.summary(forkBuild.skills.values()))'
     rating = f'{h}("output",{{class:"fork-rating-summary"}},"Rating : "+{POINTER}.formatRating(forkRating))'
@@ -333,7 +337,7 @@ def readable_rating_changes(horse, app):
                                     portrait: e.currentTarget.closest(".horseDef")?.querySelector(".umaSelectorIconsBox>div>img")?.src,
                                     rating, rank: {POINTER}.rankIndex(rating, RankThresholds), course: props.course
                                 }});
-                            }}}}>📷&#xFE0E;</button>''')
+                            }}}}>??&#xFE0E;</button>''')
     ocr_menu = '<li><button onClick={clipbdPaste}>Paste from clipboard</button></li>'
     horse = replace_once(horse, ocr_menu, ocr_menu + '\n                                        {props.showOcr !== false && <li><button onClick={setOcrOpen.bind(null, true)}>Read from screenshot (OCR)</button></li>}')
     head = match_once(horse, r'<div class="horseSkillHeader">[\s\S]+?</output>\s*</div>')
@@ -351,7 +355,7 @@ def readable_rating_changes(horse, app):
                         <div class="fork-aptitude fork-distance"><span><Text id="select.distanceaptitude" /></span><AptitudeSelect a={{props.state.distanceAptitude}} tabindex={{tabnext()}} /></div>
                         <div class="fork-aptitude fork-strategy"><span><Text id="select.strategy" /></span><StrategySelect s={{l_strategy}} tabindex={{tabnext()}} /></div>
                         <div class="fork-aptitude fork-style"><span><Text id="select.strategyaptitude" /></span><AptitudeSelect a={{props.state.strategyAptitude}} tabindex={{tabnext()}} /></div>
-                        <div class="fork-live-rank">{{rank === null ? <span>—</span> : <img src={{`/uma-tools/icons/rank/utx_txt_rank_${{rank}}.png`}} alt="Live rank" title={{"Rank for " + {POINTER}.formatRating(rating)}} />}}</div>
+                        <div class="fork-live-rank">{{rank === null ? <span>-</span> : <img src={{`/uma-tools/icons/rank/utx_txt_rank_${{rank}}.png`}} alt="Live rank" title={{"Rank for " + {POINTER}.formatRating(rating)}} />}}</div>
                         <output class="fork-sp-summary" title="Total base skill points including prerequisites">SP : {{{POINTER}.summary(build.skills.values())}}</output>
                         <output class="fork-rating-summary">Rating : {{{POINTER}.formatRating(rating)}}</output>
                         <div class="fork-race-context"><MoodSelect m={{props.state.mood}} tabindex={{tabnext()}} /></div>
@@ -383,6 +387,7 @@ def readable_changes(read, destination, sha):
     menu = '<li><button onClick={clipbdPaste}>Paste from clipboard</button></li>'
     horse = replace_once(horse, menu, menu + f'''
                                         <li><button onClick={{() => {POINTER}.importFile(value => setUma(deserializeUma(value)))}}>Import JSON</button></li>
+                                        {{{POINTER}.partnerEndpoint() && <li><button onClick={{() => {POINTER}.importPartner(value => setUma(deserializeUma(value)), props.course)}}>Import Partner ID</button></li>}}
                                         <li><button onClick={{() => {POINTER}.exportFile(serializeUma(uma_GetCurrent()))}}>Export JSON</button></li>''')
     title = '{props.skillHeader || <Text id="skillheader" />}'
     horse = replace_once(horse, title, title + f'''
@@ -507,7 +512,7 @@ def add_upcoming_umas(read, bundle, unsupported):
             if not icons.get(outfit_id) or not icons.get(uma_id):
                 raise ValueError(f'Missing upstream character icon for {outfit_id}')
             character = roster.setdefault(uma_id, {'name': uma['name'], 'outfits': {}})
-            character['outfits'][outfit_id] = {**outfit, 'epithet': f"{outfit['epithet']} · JP"}
+            character['outfits'][outfit_id] = {**outfit, 'epithet': f"{outfit['epithet']} � JP"}
             upcoming[outfit_id] = ids
             required.update(ids)
             related.update(outfit['awakenings'])
@@ -612,8 +617,12 @@ def prepare(read, sha, dest, files):
     card_version = sha256((dest / 'build-card.js').read_bytes()).hexdigest()[:12]
     (dest / 'LICENSE').write_bytes(read('LICENSE'))
     readable_changes(read, dest / 'source-changes', sha)
+    partner_url = environ.get('PARTNER_LOOKUP_URL', '').strip()
     for route in ROUTES:
         html = read(base + route).decode()
+        if partner_url:
+            html = replace_once(html, '</head>',
+                                f'<meta name="partner-lookup-url" content="{escape(partner_url)}">\n</head>')
         html = replace_once(html, 'href="bundle.css"', f'href="bundle.css?v={css_version}"')
         html = replace_once(html, '<script src="bundle.js"></script>',
                             f'<script src="skill-catalog.js?v={catalog_version}"></script>\n'

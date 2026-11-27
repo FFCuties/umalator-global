@@ -40,6 +40,8 @@ jobs:
             /components/HorseDef.tsx
             /components/HorseDefTypes.ts
       - name: Build and test
+        env:
+          PARTNER_LOOKUP_URL: ${{ vars.PARTNER_LOOKUP_URL }}
         run: |
           python3 scripts/prepare.py upstream --sha "$(git -C upstream rev-parse HEAD)"
           node --check dist/bundle.js
