@@ -124,7 +124,6 @@
 
   function stringify(build) {
     const {aptitudes, ...exportedBuild} = build;
-    if (build.skillLevels) exportedBuild.aptitudes = aptitudes;
     const forcedSkillPositions = Object.fromEntries(Object.entries(build.samplePolicies ?? {})
       .filter(([, sample]) => sample.policy === 'fixed')
       .map(([id, sample]) => [id, sample.pos]));
@@ -146,110 +145,6 @@
       }
     }, {once: true});
     input.click();
-  }
-
-  function partnerEndpoint() {
-    return document.querySelector('meta[name="partner-lookup-url"]')?.content;
-  }
-
-  async function lookupPartner(id, endpoint, signal, course) {
-    if (!/^\d{9}$/.test(id)) throw new Error('Enter a 9-digit Global Partner ID.');
-    const url = new URL(endpoint, document.baseURI);
-    if (url.protocol !== 'https:' && url.origin !== location.origin) {
-      throw new Error('Use an HTTPS Partner lookup URL.');
-    }
-    url.searchParams.set('partner_id', id);
-    const response = await fetch(url, {signal, credentials: 'omit', cache: 'no-store', redirect: 'error'});
-    if (response.status === 404 || response.status === 410) {
-      throw new Error('Partner ID was not found or has expired.');
-    }
-    if (!response.ok) throw new Error(`Partner lookup failed (${response.status}).`);
-    const {partner_id, veteran} = await response.json() ?? {};
-    if (partner_id !== id) throw new Error('The lookup returned a different Partner ID.');
-    if (!veteran || !Array.isArray(veteran.skill_array)) {
-      throw new Error('The lookup did not return a full trained build.');
-    }
-
-    const integer = (value, field, min, max = Number.MAX_SAFE_INTEGER) => {
-      if (!Number.isSafeInteger(value) || value < min || value > max) {
-        throw new Error(`Invalid or missing ${field} in the trained build.`);
-      }
-      return value;
-    };
-    const gradeFields = [
-      'distance_short', 'distance_mile', 'distance_middle', 'distance_long',
-      'running_style_nige', 'running_style_senko', 'running_style_sashi', 'running_style_oikomi',
-      'ground_turf', 'ground_dirt',
-    ];
-    const grades = gradeFields.map(field => integer(veteran[`proper_${field}`], field, 1, 8));
-    const aptitudes = grades.map(grade => 'GFEDCBAS'[grade - 1]);
-    const card = integer(veteran.card_id, 'card_id', 100001, 999999);
-    const starCount = integer(veteran.rarity, 'rarity', 1, 5);
-    const style = integer(veteran.running_style, 'running_style', 1, 4) - 1;
-    const characterId = Math.floor(card / 100);
-    const outfitNumber = integer(card % 100, 'outfit number', 1, 99);
-    const uniqueBase = starCount > 2 ? 100000 : 10000;
-    const uniqueId = String(uniqueBase + 10000 * (outfitNumber - 1) + 10 * (characterId % 1000) + 1);
-    const skillIds = [];
-    const skillLevels = {};
-    for (const entry of veteran.skill_array) {
-      const id = String(integer(entry?.skill_id, 'skill ID', 1));
-      if (skillIds.includes(id)) throw new Error(`Duplicate learned skill ${id}.`);
-      skillIds.push(id);
-      if (entry.level != null) skillLevels[id] = integer(entry.level, `skill ${id} level`, 1);
-    }
-    const stats = Object.fromEntries(['speed', 'stamina', 'power', 'guts', 'wiz'].map(field => [
-      field === 'wiz' ? 'wisdom' : field, integer(veteran[field], field, 1),
-    ]));
-    const distanceGrade = aptitudes.slice(0, 4)[course?.distanceType - 1];
-    const surfaceGrade = aptitudes.slice(8)[course?.surface - 1];
-    return parse(JSON.stringify({
-      outfitId: String(card), characterId: String(characterId), starCount, ...stats,
-      uniqueLv: integer(skillLevels[uniqueId], `unique skill ${uniqueId} level`, 1),
-      aptitudes, skillLevels, skills: skillIds,
-      strategy: ['Nige', 'Senkou', 'Sasi', 'Oikomi'][style], strategyAptitude: aptitudes[4 + style],
-      distanceAptitude: distanceGrade ?? aptitudes[grades.indexOf(Math.max(...grades.slice(0, 4)))],
-      surfaceAptitude: surfaceGrade ?? aptitudes[grades[9] > grades[8] ? 9 : 8], mood: 2, popularity: 1,
-    }));
-  }
-
-  function importPartner(apply, course) {
-    const endpoint = partnerEndpoint();
-    if (!endpoint) return;
-    const dialog = document.createElement('dialog');
-    dialog.className = 'fork-card-dialog';
-    dialog.setAttribute('aria-label', 'Import Partner ID');
-    dialog.innerHTML = `<form>
-      <label>Global Partner ID <input name="partnerId" inputmode="numeric" pattern="[0-9]{9}" maxlength="9" required></label>
-      <p role="status"></p>
-      <div class="fork-card-actions"><button type="button">Cancel</button><button type="submit">Import</button></div>
-    </form>`;
-    const form = dialog.querySelector('form');
-    const status = dialog.querySelector('[role="status"]');
-    const submit = dialog.querySelector('[type="submit"]');
-    const controller = new AbortController();
-    dialog.querySelector('[type="button"]').onclick = () => dialog.close();
-    dialog.addEventListener('close', () => { controller.abort(); dialog.remove(); }, {once: true});
-    form.addEventListener('submit', async event => {
-      event.preventDefault();
-      if (submit.disabled) return;
-      submit.disabled = true;
-      status.textContent = 'Looking up Partner ID.';
-      const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(20000)]);
-      try {
-        const build = await lookupPartner(form.elements.partnerId.value, endpoint, signal, course);
-        if (!dialog.open || controller.signal.aborted) return;
-        apply(build);
-        dialog.close();
-      } catch (error) {
-        status.textContent = error.name === 'TimeoutError' ? 'Partner lookup timed out. Try again.' : error.message;
-      } finally {
-        submit.disabled = false;
-      }
-    });
-    document.body.append(dialog);
-    dialog.showModal();
-    form.elements.partnerId.focus();
   }
 
   function exportFile(build, name, value) {
@@ -336,5 +231,5 @@
     };
   }
 
-  globalThis.UmaFork = Object.freeze({total, summary, rating, formatRating, rankIndex, filename, parse, stringify, importFile, exportFile, partnerEndpoint, lookupPartner, importPartner, restoreDraft, watchDraft, darkMode, setDarkMode});
+  globalThis.UmaFork = Object.freeze({total, summary, rating, formatRating, rankIndex, filename, parse, stringify, importFile, exportFile, restoreDraft, watchDraft, darkMode, setDarkMode});
 })();

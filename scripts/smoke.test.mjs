@@ -88,50 +88,6 @@ test('Kachi build fields round-trip and forced positions become engine policies'
   assert.throws(() => io.parse(JSON.stringify({...kachi, skills: ['99999999']})), /Skills unavailable/);
 });
 
-test('Partner lookup feeds the build importer and checks identity and completeness', async () => {
-  const id = '023456789';
-  const veteran = {
-    card_id: 102001, rarity: 5, running_style: 2,
-    speed: 1214, stamina: 861, power: 854, guts: 600, wiz: 801,
-    proper_distance_short: 1, proper_distance_mile: 5,
-    proper_distance_middle: 7, proper_distance_long: 7,
-    proper_running_style_nige: 7, proper_running_style_senko: 8,
-    proper_running_style_sashi: 4, proper_running_style_oikomi: 3,
-    proper_ground_turf: 8, proper_ground_dirt: 2,
-    skill_array: [{skill_id: 100201, level: 4}, {skill_id: 200162, level: 1}],
-  };
-  let response = {ok: true, json: async () => ({partner_id: id, veteran})};
-  const browser = {
-    URL, location: new URL('https://example.test/'),
-    document: {baseURI: 'https://example.test/compare/', documentElement: {setAttribute() {}}},
-    fetch: async (url, options) => {
-      assert.equal(url.href, `https://lookup.test/partners?partner_id=${id}`);
-      assert.equal(options.credentials, 'omit');
-      return response;
-    },
-  };
-  runInNewContext(read('skill-catalog.js'), browser);
-  runInNewContext(read('build-io.js'), browser);
-  const endpoint = 'https://lookup.test/partners';
-  const imported = await browser.UmaFork.lookupPartner(id, endpoint, undefined, {distanceType: 2, surface: 2});
-  assert.equal(imported.outfitId, '102001');
-  assert.equal(imported.strategy, 'Senkou');
-  assert.equal(imported.distanceAptitude, 'C');
-  assert.equal(imported.surfaceAptitude, 'F');
-  assert.equal(imported.uniqueLv, 4);
-  const exported = JSON.parse(browser.UmaFork.stringify(imported));
-  assert.deepEqual(exported.aptitudes, ['G','C','A','A','A','S','D','E','S','F']);
-  assert.deepEqual(exported.skills, ['100201', '200162']);
-  assert.deepEqual(exported.skillLevels, {'100201':4, '200162':1});
-  response = {ok: false, status: 410};
-  await assert.rejects(browser.UmaFork.lookupPartner(id, endpoint), /expired/);
-  response = {ok: true, json: async () => ({partner_id: '999999999', veteran})};
-  await assert.rejects(browser.UmaFork.lookupPartner(id, endpoint), /different Partner ID/);
-  response = {ok: true, json: async () => ({partner_id: id, veteran: {main_parent_id: 102001}})};
-  await assert.rejects(browser.UmaFork.lookupPartner(id, endpoint), /full trained build/);
-  assert.match(read('bundle.js'), /importPartner\(value=>\w+\(\w+\(value\)\),\w+\.course\)/);
-});
-
 test('new builds default to five stars while explicit imported star counts are retained', () => {
   const defaults = read('bundle.js').match(/\{outfitId:"",starCount:5,[^{}]+?uniqueLv:3,mood:2,popularity:1\}/);
   assert.ok(defaults);
@@ -294,7 +250,7 @@ test('JP outfits retain their unique skills through build import and export', ()
   for (const [outfitId, ids] of Object.entries(upcomingUmas)) {
     const uma = roster[outfitId.slice(0, 4)];
     const outfit = uma.outfits[outfitId];
-    assert.match(outfit.epithet, / � JP$/);
+    assert.match(outfit.epithet, / · JP$/);
     assert.ok(uma.name[1].trim(), outfitId);
     assert.equal(outfit.aptitudes.length, 10, outfitId);
     assert.ok(outfit.strategy >= 1 && outfit.strategy <= 4, outfitId);
