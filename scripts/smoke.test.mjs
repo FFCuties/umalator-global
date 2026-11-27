@@ -8,7 +8,7 @@ const realm = {};
 runInNewContext(read('skill-catalog.js'), realm);
 runInNewContext(read('build-io.js'), realm);
 runInNewContext(read('build-card.js'), realm);
-const {UmaFork: io, UmaForkData: {skills, upcomingSkills}} = realm;
+const {UmaFork: io, UmaForkData: {skills, upcomingSkills, upcomingUmas}} = realm;
 const white = Object.keys(skills).find(id => skills[id].baseCost > 0 &&
   skills[id].rarity === 1 && !skills[id].iconId.endsWith('4') && skills[String(+id + 1)]?.groupId === skills[id].groupId &&
   skills[String(+id + 1)].rarity === 1 && !skills[String(+id + 1)].iconId.endsWith('4'));
@@ -227,7 +227,7 @@ test('source attribution is available in the collapsed sidebar About / Source se
   assert.ok(read('LICENSE').includes('GNU GENERAL PUBLIC LICENSE'));
 });
 
-test('upcoming English-named skills are available for import, scoring and simulation', () => {
+test('upcoming skills are available for import, scoring and simulation', () => {
   const bundle = read('bundle.js');
   const worker = read('simulator.worker.js');
   for (const [id, name] of Object.entries(upcomingSkills)) {
@@ -237,6 +237,31 @@ test('upcoming English-named skills are available for import, scoring and simula
     assert.ok(worker.includes(`"${id}":{"alternatives":`), `worker: ${id}`);
     assert.deepEqual(Array.from(io.parse(JSON.stringify({...kachi, skills: [id]})).skills), [id]);
     assert.ok(Number.isFinite(io.total([id])), id);
+  }
+});
+
+test('JP outfits retain their unique skills through build import and export', () => {
+  const bundle = read('bundle.js');
+  const roster = JSON.parse(bundle.match(/\{"1001":\{"name":.*?\}(?=;(?:var |function ))/s)[0]);
+  const names = JSON.parse(bundle.match(/\{"1000011":\[.*?\}(?=;(?:var |function ))/s)[0]);
+  assert.ok(Object.keys(upcomingUmas).length > 0);
+  assert.equal(roster['1001'].outfits['100101'].epithet, '[Special Dreamer]');
+  assert.ok(Object.values(roster).some(uma => Object.keys(uma.outfits).length > 1));
+  for (const [outfitId, ids] of Object.entries(upcomingUmas)) {
+    const uma = roster[outfitId.slice(0, 4)];
+    const outfit = uma.outfits[outfitId];
+    assert.match(outfit.epithet, / · JP$/);
+    assert.ok(uma.name[1].trim(), outfitId);
+    assert.equal(outfit.aptitudes.length, 10, outfitId);
+    assert.ok(outfit.strategy >= 1 && outfit.strategy <= 4, outfitId);
+    assert.equal(ids.length, outfit.rarity < 3 ? 2 : 1, outfitId);
+    for (const [index, id] of ids.entries()) {
+      assert.equal(names[id][0], skills[id].name, outfitId);
+      const build = io.parse(JSON.stringify({...kachi, outfitId, starCount: index ? outfit.rarity : 5, skills:[id]}));
+      const roundTrip = io.parse(io.stringify(build));
+      assert.equal(roundTrip.outfitId, outfitId);
+      assert.deepEqual(Array.from(roundTrip.skills), [id]);
+    }
   }
 });
 
@@ -253,11 +278,13 @@ test('every added skill can be simulated by the worker on a reference course', {
   }, {timeout:5000});
   const build = {...kachi, starCount:3,uniqueLv:1,popularity:1,
     aptitudes:['S','S','S','S','A','A','A','A','A','A'],skills:new Map(),samplePolicies:new Map()};
+  const outfitForSkill = new Map(Object.entries(upcomingUmas).flatMap(
+    ([outfitId, ids]) => ids.map((id, index) => [id, {outfitId, starCount:index ? 2 : 5}])));
   for (const [id, name] of Object.entries(upcomingSkills)) {
     response = null;
     receive({data:{msg:'compare',data:{nsamples:2,course,
       racedef:{groundCondition:3,weather:1,season:4,time:2,grade:100,skillId:'',orderRange:null,numUmas:9},
-      uma1:{...build,skills:new Map([[skills[id].groupId,id]])},uma2:build,
+      uma1:{...build,...outfitForSkill.get(id),skills:new Map([[skills[id].groupId,id]])},uma2:build,
       options:{seed:2615953739,usePosKeep:true,useCompeteTop:true,useIntChecks:false}}}});
     assert.equal(response?.results?.results?.length, 2, `${id}: ${name}`);
     assert.ok(response.results.results.every(Number.isFinite), `${id}: ${name}`);

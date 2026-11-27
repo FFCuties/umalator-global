@@ -32,6 +32,7 @@ jobs:
           sparse-checkout: |
             /LICENSE
             /skill_meta.json
+            /umas.json
             /umalator-global/
             /umalator/bundle.js
             /umalator/simulator.worker.js

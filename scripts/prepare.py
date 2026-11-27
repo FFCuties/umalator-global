@@ -205,6 +205,9 @@ def integrate_bundle(bundle):
     dark = (f'{h}("div",{{class:"fork-dark-mode-row"}},{h}("label",{{for:"fork-dark-mode"}},"Dark mode"),'
             f'{h}("input",{{type:"checkbox",id:"fork-dark-mode",defaultChecked:{POINTER}.darkMode(),onChange:e=>{POINTER}.setDarkMode(e.currentTarget.checked)}}))')
     bundle = replace_once(bundle, hp[0], hp[0] + ',' + dark)
+    search = match_once(bundle, r'(\w+)\.outfits\[(\w+)\]\+" "\+\1\.name\[1\]')
+    bundle = replace_once(bundle, search[0],
+                          f'{search[1]}.outfits[{search[2]}].epithet+" "+{search[1]}.name[1]+" "+{search[2]}')
     return localize(bundle)
 
 
@@ -367,6 +370,8 @@ def readable_rating_changes(horse, app):
 
 def readable_changes(read, destination, sha):
     horse = read('components/HorseDef.tsx').decode()
+    horse = replace_once(horse, "u.outfits[id] + ' ' + u.name[1]",
+                         "u.outfits[id].epithet + ' ' + u.name[1] + ' ' + id")
     horse = replace_once(horse, 'starCount = Math.max(starCount, u.rarity);', 'starCount = 5;')
     horse_types = read('components/HorseDefTypes.ts').decode()
     default_state = match_once(horse_types, r'export const DEFAULT_HORSE_STATE = \{[\s\S]+?\};')[0]
@@ -432,31 +437,86 @@ def bundled_object(source, anchor):
         raise ValueError(f'Expected exactly one embedded data object: {anchor}')
     start = source.index(anchor)
     depth = 0
-    quoted = escaped = False
+    quote = None
+    escaped = False
     for end in range(start, len(source)):
         char = source[end]
-        if quoted:
+        if quote:
             if escaped:
                 escaped = False
             elif char == '\\':
                 escaped = True
-            elif char == '"':
-                quoted = False
-        elif char == '"':
-            quoted = True
+            elif char == quote:
+                quote = None
+        elif char in '"`':
+            quote = char
         elif char == '{':
             depth += 1
         elif char == '}':
             depth -= 1
             if depth == 0:
                 literal = source[start:end + 1]
-                # esbuild emits bare property names in these JSON data literals.
-                decoded = json.loads(re.sub(r'(?<=[{,])([A-Za-z]\w*):', r'"\1":', literal))
+                # esbuild emits bare keys and JavaScript hex escapes in data literals.
+                def normalize(match):
+                    if match[1]:
+                        return json.dumps(match[1]) + ':'
+                    token = match[0]
+                    if token.startswith('`'):
+                        token = '"' + re.sub(r'\\. | " | [\r\n\t]', lambda char: {
+                            r'\`': '`', r'\$': '$', '"': r'\"', '\r': r'\r', '\n': r'\n', '\t': r'\t',
+                        }.get(char[0], char[0]), token[1:-1], flags=re.X) + '"'
+                    return re.sub(r'\\(?:x([0-9a-fA-F]{2})|.)',
+                                  lambda escape: r'\u00' + escape[1] if escape[1] else escape[0], token)
+
+                decoded = json.loads(re.sub(r'"(?:[^"\\]|\\.)*"|`(?:[^`\\]|\\.)*`|(?<=[{,])([A-Za-z]\w*):',
+                                            normalize, literal))
                 return literal, decoded
     raise ValueError(f'Unterminated data object: {anchor}')
 
 
-def add_upcoming_skills(read, bundle, worker, skills, meta):
+UMA_ANCHOR = '{"1001":{name:'
+SKILL_NAMES_ANCHOR = '{"1000011":['
+
+
+def unique_id(outfit_id, offset):
+    return str(offset + 10000 * (int(outfit_id[-2:]) - 1) + 10 * int(outfit_id[1:-2]) + 1)
+
+
+def add_upcoming_umas(read, bundle, unsupported):
+    literal, roster = bundled_object(bundle, UMA_ANCHOR)
+    if roster != json.loads(read('umalator-global/umas.json')):
+        raise ValueError('Global UI roster differs from upstream JSON')
+    _, icons = bundled_object(bundle, '{"1001":"chr_icon_1001"')
+    jp_roster = json.loads(read('umas.json'))
+    upcoming = {}
+    excluded = {}
+    required = set()
+    related = set()
+    for uma_id, uma in jp_roster.items():
+        for outfit_id, outfit in uma['outfits'].items():
+            if outfit_id in roster.get(uma_id, {}).get('outfits', {}):
+                continue
+            ids = [unique_id(outfit_id, 100000)]
+            if outfit['rarity'] < 3:
+                ids.append(unique_id(outfit_id, 10000))
+            unavailable = [sid for sid in ids if sid in unsupported]
+            if unavailable:
+                excluded[outfit_id] = {'name': uma['name'][1], 'skills': unavailable}
+                related.update(unavailable)
+                continue
+            if not icons.get(outfit_id) or not icons.get(uma_id):
+                raise ValueError(f'Missing upstream character icon for {outfit_id}')
+            character = roster.setdefault(uma_id, {'name': uma['name'], 'outfits': {}})
+            character['outfits'][outfit_id] = {**outfit, 'epithet': f"{outfit['epithet']} · JP"}
+            upcoming[outfit_id] = ids
+            required.update(ids)
+            related.update(outfit['awakenings'])
+            related.add(unique_id(outfit_id, 900000))
+    bundle = replace_once(bundle, literal, json.dumps(roster, ensure_ascii=True, separators=(',', ':')))
+    return bundle, upcoming, excluded, required, related
+
+
+def add_upcoming_data(read, bundle, worker, skills, meta):
     data_anchor = '{"100011":{alternatives:'
     meta_anchor = '{"100011":{baseCost:'
     jp_bundle = read('umalator/bundle.js').decode()
@@ -465,19 +525,30 @@ def add_upcoming_skills(read, bundle, worker, skills, meta):
     _, jp_worker_skills = bundled_object(jp_worker, data_anchor)
     if jp_skills != jp_worker_skills:
         raise ValueError('JP UI and engine skill data differ')
-    jp_meta = json.loads(read('skill_meta.json'))
-    names = json.loads(read('umalator-global/skillnames.json'))
-    upcoming = sorted((set(jp_skills) - set(skills)) & set(jp_meta) & set(names), key=int)
-    # Do not invent English names or overwrite skills already released in Global.
-    upcoming = [sid for sid in upcoming if names[sid] and isinstance(names[sid][0], str) and names[sid][0].strip()]
-    # The current upstream condition engine does not implement these conditions.
-    # The first two affected evolutions and the shared random roll throw during comparison.
-    unsupported_conditions = re.compile(r'\b(?:temptation_opponent_count_behind|random_lot_shared)\b')
-    excluded = {sid: names[sid][0] for sid in upcoming if any(
+    # These conditions are absent from the current Global parser.
+    unsupported_conditions = re.compile(
+        r'\b(?:temptation_opponent_count_behind|random_lot_shared|is_used_skill_id_with_detail_one|is_goodstart)\b')
+    unsupported = {sid for sid in set(jp_skills) - set(skills) if any(
         unsupported_conditions.search(alt['condition']) or unsupported_conditions.search(alt['precondition'])
         for alt in jp_skills[sid]['alternatives']
     )}
+    bundle, outfits, excluded_outfits, required, related = add_upcoming_umas(read, bundle, unsupported)
+    jp_meta = json.loads(read('skill_meta.json'))
+    names_literal, names = bundled_object(bundle, SKILL_NAMES_ANCHOR)
+    if names != json.loads(read('umalator-global/skillnames.json')):
+        raise ValueError('Global UI skill names differ from upstream JSON')
+    _, jp_names = bundled_object(jp_bundle, SKILL_NAMES_ANCHOR)
+    eligible = (set(jp_skills) - set(skills)) & set(jp_meta)
+    upcoming = sorted(eligible & (set(names) | required | related), key=int)
+    for sid in upcoming:
+        if not (names.get(sid) or [''])[0].strip():
+            labels = jp_names.get(sid, [])
+            names[sid] = [next((label for label in reversed(labels) if label.strip()), f'Skill {sid}')]
+    excluded = {sid: names[sid][0] for sid in upcoming if sid in unsupported}
     upcoming = [sid for sid in upcoming if sid not in excluded]
+    missing = required - (set(skills) | set(upcoming))
+    if missing:
+        raise ValueError(f'No Global simulation data for JP unique skills: {sorted(missing)}')
     merged_skills = {**skills, **{sid: jp_skills[sid] for sid in upcoming}}
     merged_meta = {**meta, **{sid: jp_meta[sid] for sid in upcoming}}
     for label, source in [('UI', bundle), ('worker', worker)]:
@@ -491,7 +562,18 @@ def add_upcoming_skills(read, bundle, worker, skills, meta):
             bundle = source
         else:
             worker = source
-    return bundle, worker, merged_skills, merged_meta, {sid: names[sid][0] for sid in upcoming}, excluded
+    bundle = replace_once(bundle, names_literal, json.dumps(names, ensure_ascii=True, separators=(',', ':')))
+    catalog = {
+        'upcomingUmas': outfits,
+        'excludedUpcomingUmas': excluded_outfits,
+        'upcomingSkills': {sid: names[sid][0] for sid in upcoming},
+        'excludedUpcomingSkills': excluded,
+        'skills': {
+            sid: {**merged_meta[sid], 'rarity': skill['rarity'], 'name': (names.get(sid) or ['Skill ' + sid])[0]}
+            for sid, skill in merged_skills.items()
+        },
+    }
+    return bundle, worker, catalog
 
 
 def prepare(read, sha, dest, files):
@@ -502,15 +584,18 @@ def prepare(read, sha, dest, files):
     skills = json.loads(read(base + 'skill_data.json'))
     bundle = integrate_about(integrate_autosave(integrate_rating_bundle(integrate_bundle(read(base + 'bundle.js').decode()))), sha)
     worker = read(base + 'simulator.worker.js').decode()
-    bundle, worker, skills, meta, upcoming, excluded = add_upcoming_skills(read, bundle, worker, skills, meta)
-    names = json.loads(read(base + 'skillnames.json'))
-    catalog = {'revision': sha, 'upcomingSkills': upcoming, 'excludedUpcomingSkills': excluded, 'skills': {
-        key: {**meta[key], 'rarity': value['rarity'], 'name': (names.get(key) or ['Skill ' + key])[0]} for key, value in skills.items()
-    }}
+    bundle, worker, data = add_upcoming_data(read, bundle, worker, skills, meta)
+    catalog = {'revision': sha, **data}
+    skills = data['skills']
     if not skills or not all(f'"{id}":' in worker for id in skills):
         raise ValueError("Upstream worker and skill data have different skill IDs")
-    print(f'Added {len(upcoming)} upcoming skills with Global English names; {len(excluded)} unsupported; {len(skills)} total')
+    print(f"Added {len(data['upcomingUmas'])} JP outfits and {len(data['upcomingSkills'])} upcoming skills; "
+          f"omitted {len(data['excludedUpcomingUmas'])} outfits and {len(data['excludedUpcomingSkills'])} skills "
+          'with unsupported activation conditions')
     dest.mkdir(parents=True, exist_ok=True)
+    worker_version = sha256(worker.encode('utf-8')).hexdigest()[:12]
+    bundle = replace_once(bundle, 'new Worker("./simulator.worker.js")',
+                          f'new Worker("./simulator.worker.js?v={worker_version}")')
     (dest / 'bundle.js').write_text(bundle, encoding='utf-8')
     bundle_version = sha256(bundle.encode('utf-8')).hexdigest()[:12]
     (dest / 'simulator.worker.js').write_text(worker, encoding='utf-8')
@@ -518,7 +603,9 @@ def prepare(read, sha, dest, files):
            '\n.fork-sp{margin-inline-start:.65em;white-space:nowrap;font-weight:600}\n' + SUMMARY_CSS + DARK_MODE_CSS).encode('utf-8')
     (dest / 'bundle.css').write_bytes(css)
     css_version = sha256(css).hexdigest()[:12]
-    (dest / 'skill-catalog.js').write_text('globalThis.UmaForkData=' + json.dumps(catalog) + ';', encoding='utf-8')
+    catalog_js = 'globalThis.UmaForkData=' + json.dumps(catalog) + ';'
+    (dest / 'skill-catalog.js').write_text(catalog_js, encoding='utf-8')
+    catalog_version = sha256(catalog_js.encode('utf-8')).hexdigest()[:12]
     shutil.copyfile(files / 'overlay/build-io.js', dest / 'build-io.js')
     io_version = sha256((dest / 'build-io.js').read_bytes()).hexdigest()[:12]
     shutil.copyfile(files / 'overlay/build-card.js', dest / 'build-card.js')
@@ -529,7 +616,7 @@ def prepare(read, sha, dest, files):
         html = read(base + route).decode()
         html = replace_once(html, 'href="bundle.css"', f'href="bundle.css?v={css_version}"')
         html = replace_once(html, '<script src="bundle.js"></script>',
-                            '<script src="skill-catalog.js"></script>\n'
+                            f'<script src="skill-catalog.js?v={catalog_version}"></script>\n'
                             f'\t\t<script src="build-io.js?v={io_version}"></script>\n'
                             f'\t\t<script src="build-card.js?v={card_version}"></script>\n'
                             f'\t\t<script src="bundle.js?v={bundle_version}"></script>')
